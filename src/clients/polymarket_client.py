@@ -71,6 +71,25 @@ class PolymarketClient(BaseExchangeClient):
         data = response.json()
         return data if isinstance(data, dict) else None
 
+    @retry_api_call
+    async def list_events(self, *, active_only: bool = True, limit: int = 500) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": min(limit, 500), "offset": 0}
+        if active_only:
+            params["active"] = "true"
+            params["closed"] = "false"
+        out: list[dict[str, Any]] = []
+        while len(out) < limit:
+            response = await self._gamma.get("/events", params=params)
+            response.raise_for_status()
+            page = response.json()
+            if not isinstance(page, list) or not page:
+                break
+            out.extend(item for item in page if isinstance(item, dict))
+            if len(page) < params["limit"]:
+                break
+            params["offset"] += params["limit"]
+        return out[:limit]
+
     @staticmethod
     def _parse_gamma_market(raw: dict[str, Any]) -> Market | None:
         question = raw.get("question") or raw.get("title")

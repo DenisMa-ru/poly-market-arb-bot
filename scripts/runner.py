@@ -15,7 +15,8 @@ from src.clients.polymarket_client import PolymarketClient
 from src.config.settings import get_settings
 from src.execution.executor import Executor
 from src.execution.settlement import SettlementEngine
-from src.markets.market_filter import filter_supported_markets
+from src.markets.updown_discovery import discover_updown_markets
+from src.markets.updown_parser import UpDownMarket
 from src.storage.db import Database
 from src.utils.logger import get_logger, setup_logging
 
@@ -36,16 +37,15 @@ def build_client() -> PolymarketClient:
 
 async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageAnalyzer, executor: Executor) -> int:
     settings = get_settings()
-    markets = await client.list_markets(active_only=True)
-    filtered = filter_supported_markets(markets, set(settings.normalized_symbols()))
+    filtered = await discover_updown_markets(client, settings.normalized_symbols())
     found = 0
     for market in filtered:
         try:
             yes_book, no_book = await asyncio.gather(
-                client.get_orderbook(market.yes_token_id, Outcome.YES),
-                client.get_orderbook(market.no_token_id, Outcome.NO),
+                client.get_orderbook(market.up_token_id, Outcome.YES),
+                client.get_orderbook(market.down_token_id, Outcome.NO),
             )
-            opportunity = analyzer.detect_bundle_opportunity(market, yes_book, no_book)
+            opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:
                 continue
             executor.handle(opportunity)
@@ -54,6 +54,23 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             logger.warning("market scan failed", extra={"market_id": market.market_id, "err": str(exc)})
             db.insert_event("WARNING", "market scan failed", {"market_id": market.market_id, "err": str(exc)})
     return found
+
+
+def _detect_updown_opportunity(analyzer: ArbitrageAnalyzer, market: UpDownMarket, yes_book, no_book):
+    from src.markets.market_parser import ParsedCryptoMarket
+
+    parsed = ParsedCryptoMarket(
+        market_id=market.market_id,
+        question=market.question,
+        symbol=market.symbol,
+        timeframe_minutes=market.timeframe_minutes,
+        strike=None,
+        expiry_at=market.expiry_at,
+        yes_token_id=market.up_token_id,
+        no_token_id=market.down_token_id,
+        raw_market=None,  # type: ignore[arg-type]
+    )
+    return analyzer.detect_bundle_opportunity(parsed, yes_book, no_book)
 
 
 async def run_loop() -> None:
