@@ -33,6 +33,18 @@ class ScanStats:
     errors: int = 0
 
 
+@dataclass(frozen=True)
+class MarketSnapshot:
+    slug: str
+    symbol: str
+    timeframe_minutes: int
+    ask_up: float | None
+    ask_down: float | None
+    sum_asks: float | None
+    up_asks: int
+    down_asks: int
+
+
 def build_client() -> PolymarketClient:
     settings = get_settings()
     settings.assert_polymarket_ready()
@@ -50,6 +62,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     filtered = await discover_updown_markets(client, settings.normalized_symbols())
     stats = ScanStats(discovered=len(filtered))
     logged_no_opportunity = 0
+    snapshots: list[MarketSnapshot] = []
     if filtered:
         logger.info(
             "discovered updown markets",
@@ -71,11 +84,23 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 executed=stats.executed,
                 errors=stats.errors,
             )
+            ask_up = yes_book.best_ask.price if yes_book.best_ask else None
+            ask_down = no_book.best_ask.price if no_book.best_ask else None
+            snapshots.append(
+                MarketSnapshot(
+                    slug=market.slug,
+                    symbol=market.symbol,
+                    timeframe_minutes=market.timeframe_minutes,
+                    ask_up=ask_up,
+                    ask_down=ask_down,
+                    sum_asks=None if ask_up is None or ask_down is None else ask_up + ask_down,
+                    up_asks=len(yes_book.asks),
+                    down_asks=len(no_book.asks),
+                )
+            )
             opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:
                 if logged_no_opportunity < 5:
-                    ask_up = yes_book.best_ask.price if yes_book.best_ask else None
-                    ask_down = no_book.best_ask.price if no_book.best_ask else None
                     logger.info(
                         "no opportunity",
                         extra={
@@ -141,6 +166,29 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 executed=stats.executed,
                 errors=stats.errors + 1,
             )
+    best_snapshots = sorted(
+        (snapshot for snapshot in snapshots if snapshot.sum_asks is not None),
+        key=lambda snapshot: snapshot.sum_asks,
+    )[:10]
+    db.insert_event(
+        "INFO",
+        "scan telemetry",
+        {
+            "discovered": stats.discovered,
+            "processed": stats.processed,
+            "opportunities": stats.opportunities,
+            "executed": stats.executed,
+            "errors": stats.errors,
+            "best_markets": [snapshot.__dict__ for snapshot in best_snapshots],
+        },
+    )
+    if best_snapshots:
+        logger.info(
+            "best near-arbs",
+            extra={
+                "markets": [snapshot.__dict__ for snapshot in best_snapshots[:5]],
+            },
+        )
     return stats
 
 

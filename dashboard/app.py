@@ -14,7 +14,6 @@ from src.config.settings import get_settings
 from src.storage.db import Database
 
 st.set_page_config(page_title="poly-market-arb-bot", layout="wide")
-st.title("poly-market-arb-bot")
 
 settings = get_settings()
 db = Database(settings.db_full_path)
@@ -24,45 +23,75 @@ def _df(rows: list) -> pd.DataFrame:
     return pd.DataFrame([dict(row) for row in rows]) if rows else pd.DataFrame()
 
 
+def _event_df(rows: list[dict[str, object]]) -> pd.DataFrame:
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
 opps = _df(db.recent_opportunities(limit=200))
 events = _df(db.recent_events(limit=100))
 trades = _df(db.recent_trades(limit=200))
 positions = _df(db.open_positions(limit=200))
 resolved_positions = _df(db.resolved_positions(limit=200))
+curve = _df(db.equity_curve(limit=2000))
+scan_events = _event_df(db.recent_scan_events(limit=100))
+near_arbs = _event_df(db.recent_near_arb_markets(limit=200))
+
 balance = db.latest_balance()
 open_exposure = db.open_exposure_usd()
 realized_pnl = db.realized_pnl_total()
-curve = _df(db.equity_curve(limit=2000))
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Paper balance", f"${balance:,.2f}" if balance is not None else "—")
-col2.metric("Open exposure", f"${open_exposure:,.2f}")
-col3.metric("Realized PnL", f"${realized_pnl:+,.2f}")
-col4.metric("Trades", len(trades))
+st.title("Polymarket short up/down scanner")
+st.caption("Paper-mode dashboard for discovery, near-arb tracking, and execution telemetry.")
 
-st.subheader("Recent opportunities")
-if opps.empty:
-    st.info("No opportunities recorded yet.")
-else:
-    st.dataframe(opps, use_container_width=True, hide_index=True)
+latest_scan = scan_events.iloc[0] if not scan_events.empty else None
 
-st.subheader("Recent trades")
-if trades.empty:
-    st.info("No trades yet.")
-else:
-    st.dataframe(trades, use_container_width=True, hide_index=True)
+top1, top2, top3, top4, top5 = st.columns(5)
+top1.metric("Paper balance", f"${balance:,.2f}" if balance is not None else "—")
+top2.metric("Open exposure", f"${open_exposure:,.2f}")
+top3.metric("Realized PnL", f"${realized_pnl:+,.2f}")
+top4.metric("Trades", len(trades))
+top5.metric("Open positions", len(positions))
 
-st.subheader("Open positions")
-if positions.empty:
-    st.info("No open positions.")
-else:
-    st.dataframe(positions, use_container_width=True, hide_index=True)
+st.subheader("Scan health")
+scan1, scan2, scan3, scan4, scan5 = st.columns(5)
+scan1.metric("Markets discovered", int(latest_scan["discovered"]) if latest_scan is not None and "discovered" in latest_scan else 0)
+scan2.metric("Markets processed", int(latest_scan["processed"]) if latest_scan is not None and "processed" in latest_scan else 0)
+scan3.metric("Opportunities", int(latest_scan["opportunities"]) if latest_scan is not None and "opportunities" in latest_scan else 0)
+scan4.metric("Executed", int(latest_scan["executed"]) if latest_scan is not None and "executed" in latest_scan else 0)
+scan5.metric("Errors", int(latest_scan["errors"]) if latest_scan is not None and "errors" in latest_scan else 0)
 
-st.subheader("Resolved positions")
-if resolved_positions.empty:
-    st.info("No resolved positions yet.")
-else:
-    st.dataframe(resolved_positions, use_container_width=True, hide_index=True)
+left, right = st.columns((1.2, 1.8))
+
+with left:
+    st.subheader("Best near-arbs")
+    if near_arbs.empty:
+        st.info("No scan telemetry yet.")
+    else:
+        display = near_arbs.copy()
+        preferred = [
+            "created_at",
+            "slug",
+            "symbol",
+            "timeframe_minutes",
+            "ask_up",
+            "ask_down",
+            "sum_asks",
+            "up_asks",
+            "down_asks",
+        ]
+        cols = [col for col in preferred if col in display.columns]
+        display = display[cols]
+        st.dataframe(display, use_container_width=True, hide_index=True)
+
+with right:
+    st.subheader("Recent scan summaries")
+    if scan_events.empty:
+        st.info("No scan summaries yet.")
+    else:
+        display = scan_events.copy()
+        preferred = ["created_at", "discovered", "processed", "opportunities", "executed", "errors"]
+        cols = [col for col in preferred if col in display.columns]
+        st.dataframe(display[cols], use_container_width=True, hide_index=True)
 
 st.subheader("Equity curve")
 if curve.empty:
@@ -70,10 +99,38 @@ if curve.empty:
 else:
     if "captured_at" in curve.columns:
         curve["captured_at"] = pd.to_datetime(curve["captured_at"])
-        st.line_chart(curve.set_index("captured_at")["balance_usd"])
+        st.line_chart(curve.set_index("captured_at")[["balance_usd"]])
 
-st.subheader("Recent events")
-if events.empty:
-    st.info("No events yet.")
-else:
-    st.dataframe(events, use_container_width=True, hide_index=True)
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["Recent opportunities", "Trades", "Open positions", "Resolved positions", "Events"]
+)
+
+with tab1:
+    if opps.empty:
+        st.info("No opportunities recorded yet.")
+    else:
+        st.dataframe(opps, use_container_width=True, hide_index=True)
+
+with tab2:
+    if trades.empty:
+        st.info("No trades yet.")
+    else:
+        st.dataframe(trades, use_container_width=True, hide_index=True)
+
+with tab3:
+    if positions.empty:
+        st.info("No open positions.")
+    else:
+        st.dataframe(positions, use_container_width=True, hide_index=True)
+
+with tab4:
+    if resolved_positions.empty:
+        st.info("No resolved positions yet.")
+    else:
+        st.dataframe(resolved_positions, use_container_width=True, hide_index=True)
+
+with tab5:
+    if events.empty:
+        st.info("No events yet.")
+    else:
+        st.dataframe(events, use_container_width=True, hide_index=True)

@@ -69,6 +69,36 @@ class Database:
         with self._lock:
             return self._conn.execute("SELECT * FROM bot_events ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
 
+    def recent_scan_events(self, limit: int = 100) -> list[dict[str, object]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT created_at, level, message, context_json FROM bot_events WHERE message = 'scan telemetry' ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        out: list[dict[str, object]] = []
+        for row in rows:
+            payload = self._parse_context_json(row["context_json"])
+            payload.update({"created_at": row["created_at"], "level": row["level"], "message": row["message"]})
+            out.append(payload)
+        return out
+
+    def recent_near_arb_markets(self, limit: int = 100) -> list[dict[str, object]]:
+        scan_events = self.recent_scan_events(limit=limit)
+        out: list[dict[str, object]] = []
+        for event in scan_events:
+            created_at = event.get("created_at")
+            markets = event.get("best_markets")
+            if not isinstance(markets, list):
+                continue
+            for market in markets:
+                if not isinstance(market, dict):
+                    continue
+                row = dict(market)
+                row["created_at"] = created_at
+                out.append(row)
+        out.sort(key=lambda row: (row.get("sum_asks") is None, row.get("sum_asks", 999)))
+        return out[:limit]
+
     def insert_trade(self, opportunity_id: int, mode: str, status: str = "pending", expected_pnl: float | None = None, notes: str | None = None) -> int:
         with self._lock:
             cur = self._conn.execute(
@@ -161,3 +191,13 @@ class Database:
                 "SELECT captured_at, balance_usd, note FROM balance_snapshots ORDER BY captured_at ASC LIMIT ?",
                 (limit,),
             ).fetchall()
+
+    @staticmethod
+    def _parse_context_json(value: object) -> dict[str, object]:
+        if not isinstance(value, str) or not value:
+            return {}
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
