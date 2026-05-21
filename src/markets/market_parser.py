@@ -48,18 +48,24 @@ def _extract_symbol(question: str) -> str | None:
 
 
 def _extract_timeframe_minutes(question: str) -> int | None:
-    match = re.search(r"(\d+)\s*-?\s*MIN", question.upper())
+    upper = question.upper()
+    match = re.search(r"(\d+)\s*(?:-?\s*MIN(?:UTE)?S?|M)\b", upper)
     if match:
         return int(match.group(1))
     return None
 
 
 def _extract_strike(question: str) -> float | None:
-    match = re.search(r"(?:ABOVE|OVER|HIGHER THAN)\s+\$?([0-9][0-9,]*(?:\.[0-9]+)?)", question.upper())
+    upper = question.upper()
+    match = re.search(
+        r"(?:ABOVE|OVER|HIGHER THAN|GREATER THAN|EXCEED|AT LEAST)\s+\$?([0-9][0-9,]*(?:\.[0-9]+)?)",
+        upper,
+    )
+    if not match:
+        match = re.search(r"\$([0-9][0-9,]*(?:\.[0-9]+)?)", upper)
     if not match:
         return None
     try:
         return float(match.group(1).replace(",", ""))
     except ValueError:
         return None
-
