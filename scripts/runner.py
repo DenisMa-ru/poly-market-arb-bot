@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,15 @@ from src.utils.logger import get_logger, setup_logging
 logger = get_logger("scripts.runner")
 
 
+@dataclass(frozen=True)
+class ScanStats:
+    discovered: int = 0
+    processed: int = 0
+    opportunities: int = 0
+    executed: int = 0
+    errors: int = 0
+
+
 def build_client() -> PolymarketClient:
     settings = get_settings()
     settings.assert_polymarket_ready()
@@ -35,25 +45,66 @@ def build_client() -> PolymarketClient:
     )
 
 
-async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageAnalyzer, executor: Executor) -> int:
+async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageAnalyzer, executor: Executor) -> ScanStats:
     settings = get_settings()
     filtered = await discover_updown_markets(client, settings.normalized_symbols())
-    found = 0
+    stats = ScanStats(discovered=len(filtered))
+    if filtered:
+        logger.info(
+            "discovered updown markets",
+            extra={
+                "count": len(filtered),
+                "slugs": [market.slug for market in filtered[:10]],
+            },
+        )
     for market in filtered:
         try:
             yes_book, no_book = await asyncio.gather(
                 client.get_orderbook(market.up_token_id, Outcome.YES),
                 client.get_orderbook(market.down_token_id, Outcome.NO),
             )
+            stats = ScanStats(
+                discovered=stats.discovered,
+                processed=stats.processed + 1,
+                opportunities=stats.opportunities,
+                executed=stats.executed,
+                errors=stats.errors,
+            )
             opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:
                 continue
-            executor.handle(opportunity)
-            found += 1
+            logger.info(
+                "opportunity detected",
+                extra={
+                    "symbol": market.symbol,
+                    "timeframe_minutes": market.timeframe_minutes,
+                    "slug": market.slug,
+                    "ask_up": opportunity.ask_yes,
+                    "ask_down": opportunity.ask_no,
+                    "sum_asks": opportunity.ask_yes + opportunity.ask_no,
+                    "edge_bps": opportunity.edge_bps,
+                    "net_edge_usd": opportunity.net_edge_usd,
+                },
+            )
+            decision = executor.handle(opportunity)
+            stats = ScanStats(
+                discovered=stats.discovered,
+                processed=stats.processed,
+                opportunities=stats.opportunities + 1,
+                executed=stats.executed + (1 if decision.accepted else 0),
+                errors=stats.errors,
+            )
         except Exception as exc:
             logger.warning("market scan failed", extra={"market_id": market.market_id, "err": str(exc)})
             db.insert_event("WARNING", "market scan failed", {"market_id": market.market_id, "err": str(exc)})
-    return found
+            stats = ScanStats(
+                discovered=stats.discovered,
+                processed=stats.processed,
+                opportunities=stats.opportunities,
+                executed=stats.executed,
+                errors=stats.errors + 1,
+            )
+    return stats
 
 
 def _detect_updown_opportunity(analyzer: ArbitrageAnalyzer, market: UpDownMarket, yes_book, no_book):
@@ -94,9 +145,20 @@ async def run_loop() -> None:
         while True:
             started = time.time()
             try:
-                found = await scan_once(client, db, analyzer, executor)
+                stats = await scan_once(client, db, analyzer, executor)
                 settled = settlement.settle_expired_positions()
-                logger.info("scan complete", extra={"found": found, "settled": settled, "elapsed_s": time.time() - started})
+                logger.info(
+                    "scan complete",
+                    extra={
+                        "discovered": stats.discovered,
+                        "processed": stats.processed,
+                        "opportunities": stats.opportunities,
+                        "executed": stats.executed,
+                        "errors": stats.errors,
+                        "settled": settled,
+                        "elapsed_s": time.time() - started,
+                    },
+                )
             except asyncio.CancelledError:
                 logger.info("shutdown requested")
                 break
