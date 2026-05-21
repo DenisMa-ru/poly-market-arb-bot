@@ -1,0 +1,17 @@
+[Unit]
+Description=Polymarket Paper Arbitrage Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/poly-market-arb-bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/poly-market-arb-bot/.venv/bin/streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port 8501
+Restart=always
+RestartSec=5
+User=ubuntu
+Group=ubuntu
+
+[Install]
+WantedBy=multi-user.target
+
