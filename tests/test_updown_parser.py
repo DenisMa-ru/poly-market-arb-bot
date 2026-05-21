@@ -1,4 +1,5 @@
 from src.markets.updown_parser import parse_updown_event
+from src.markets.updown_discovery import _build_candidate_slugs
 
 
 def test_parse_updown_event_btc_5m() -> None:
@@ -29,3 +30,13 @@ def test_parse_updown_event_rejects_non_matching_slug() -> None:
     event = {"slug": "when-will-bitcoin-hit-150k", "markets": []}
     assert parse_updown_event(event) is None
 
+
+def test_build_candidate_slugs_for_btc_eth() -> None:
+    from datetime import UTC, datetime
+
+    now = datetime(2026, 5, 21, 16, 13, 19, tzinfo=UTC)
+    slugs = _build_candidate_slugs(["BTC", "ETH"], now=now)
+    assert "btc-updown-5m-1779379800" in slugs
+    assert "btc-updown-15m-1779379200" in slugs
+    assert "eth-updown-5m-1779379800" in slugs
+    assert "eth-updown-15m-1779379200" in slugs
