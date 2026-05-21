@@ -5,6 +5,9 @@ from dataclasses import dataclass
 
 from src.clients.base import Market
 
+SHORT_TIMEFRAMES = {5, 15}
+PRICE_DIRECTION_WORDS = ("ABOVE", "OVER", "HIGHER THAN", "GREATER THAN", "EXCEED", "AT LEAST")
+
 
 @dataclass(frozen=True)
 class ParsedCryptoMarket:
@@ -24,19 +27,39 @@ def parse_crypto_market(market: Market) -> ParsedCryptoMarket | None:
         return None
     symbol = _extract_symbol(market.question)
     timeframe = _extract_timeframe_minutes(market.question)
-    if symbol is None or timeframe is None:
+    strike = _extract_strike(market.question)
+    if symbol is None or timeframe is None or strike is None:
+        return None
+    if timeframe not in SHORT_TIMEFRAMES:
         return None
     return ParsedCryptoMarket(
         market_id=market.market_id,
         question=market.question,
         symbol=symbol,
         timeframe_minutes=timeframe,
-        strike=_extract_strike(market.question),
+        strike=strike,
         expiry_at=market.closes_at_iso,
         yes_token_id=market.yes_token_id,
         no_token_id=market.no_token_id,
         raw_market=market,
     )
+
+
+def explain_rejection(market: Market) -> str:
+    if market.yes_token_id is None or market.no_token_id is None:
+        return "missing_token_ids"
+    symbol = _extract_symbol(market.question)
+    if symbol is None:
+        return "symbol_not_detected"
+    timeframe = _extract_timeframe_minutes(market.question)
+    if timeframe is None:
+        return "timeframe_not_detected"
+    if timeframe not in SHORT_TIMEFRAMES:
+        return f"unsupported_timeframe_{timeframe}"
+    strike = _extract_strike(market.question)
+    if strike is None:
+        return "directional_strike_not_detected"
+    return "recognized"
 
 
 def _extract_symbol(question: str) -> str | None:
@@ -61,8 +84,6 @@ def _extract_strike(question: str) -> float | None:
         r"(?:ABOVE|OVER|HIGHER THAN|GREATER THAN|EXCEED|AT LEAST)\s+\$?([0-9][0-9,]*(?:\.[0-9]+)?)",
         upper,
     )
-    if not match:
-        match = re.search(r"\$([0-9][0-9,]*(?:\.[0-9]+)?)", upper)
     if not match:
         return None
     try:

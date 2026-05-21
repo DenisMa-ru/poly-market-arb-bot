@@ -80,6 +80,9 @@ async def run_loop() -> None:
                 found = await scan_once(client, db, analyzer, executor)
                 settled = settlement.settle_expired_positions()
                 logger.info("scan complete", extra={"found": found, "settled": settled, "elapsed_s": time.time() - started})
+            except asyncio.CancelledError:
+                logger.info("shutdown requested")
+                break
             except Exception as exc:
                 logger.exception("scan failed")
                 db.insert_event("ERROR", "scan failed", {"err": str(exc)})

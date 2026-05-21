@@ -59,3 +59,27 @@ def test_parse_eth_15m_market_format() -> None:
     assert parsed.symbol == "ETH"
     assert parsed.timeframe_minutes == 15
     assert parsed.strike == 2500.0
+
+
+def test_parse_rejects_non_short_btc_market() -> None:
+    market = Market(
+        venue=Venue.POLYMARKET,
+        market_id="m5",
+        question="Will bitcoin hit $1m before GTA VI?",
+        outcomes=("Yes", "No"),
+        yes_token_id="yes5",
+        no_token_id="no5",
+    )
+    assert parse_crypto_market(market) is None
+
+
+def test_parse_rejects_unsupported_timeframe() -> None:
+    market = Market(
+        venue=Venue.POLYMARKET,
+        market_id="m6",
+        question="Will BTC be above $105,000 in 1 min?",
+        outcomes=("Yes", "No"),
+        yes_token_id="yes6",
+        no_token_id="no6",
+    )
+    assert parse_crypto_market(market) is None

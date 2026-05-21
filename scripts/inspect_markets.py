@@ -11,7 +11,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.clients.polymarket_client import PolymarketClient
 from src.config.settings import get_settings
-from src.markets.market_parser import parse_crypto_market
+from src.markets.market_parser import explain_rejection, parse_crypto_market
 from src.utils.logger import setup_logging
 
 
@@ -58,6 +58,7 @@ async def main_async(limit: int, only_recognized: bool) -> None:
             print(f"expiry: {market.closes_at_iso}")
             if parsed is None:
                 print("parser: NOT RECOGNIZED")
+                print(f"reason: {explain_rejection(market)}")
             else:
                 print(
                     "parser:",
@@ -87,4 +88,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
