@@ -95,8 +95,27 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 errors=stats.errors,
             )
         except Exception as exc:
-            logger.warning("market scan failed", extra={"market_id": market.market_id, "err": str(exc)})
-            db.insert_event("WARNING", "market scan failed", {"market_id": market.market_id, "err": str(exc)})
+            logger.warning(
+                "market scan failed",
+                extra={
+                    "market_id": market.market_id,
+                    "slug": market.slug,
+                    "up_token_id": market.up_token_id,
+                    "down_token_id": market.down_token_id,
+                    "err": str(exc),
+                },
+            )
+            db.insert_event(
+                "WARNING",
+                "market scan failed",
+                {
+                    "market_id": market.market_id,
+                    "slug": market.slug,
+                    "up_token_id": market.up_token_id,
+                    "down_token_id": market.down_token_id,
+                    "err": str(exc),
+                },
+            )
             stats = ScanStats(
                 discovered=stats.discovered,
                 processed=stats.processed,

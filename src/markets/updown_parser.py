@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -32,6 +33,8 @@ def parse_updown_event(event: dict[str, Any]) -> UpDownMarket | None:
     if len(markets) != 1:
         return None
     market = markets[0]
+    if not _is_tradeable(event, market):
+        return None
     outcomes_raw = market.get("outcomes") or '["Up", "Down"]'
     outcomes = _parse_string_list(outcomes_raw)
     if len(outcomes) != 2 or outcomes[0].upper() != "UP" or outcomes[1].upper() != "DOWN":
@@ -65,3 +68,23 @@ def _parse_string_list(value: object) -> list[str]:
         return [str(item) for item in value]
     return []
 
+
+def _is_tradeable(event: dict[str, Any], market: dict[str, Any]) -> bool:
+    if event.get("active") is False or event.get("closed") is True:
+        return False
+    if market.get("active") is False or market.get("closed") is True:
+        return False
+    expiry_raw = market.get("endDate") or event.get("endDate")
+    expiry = _parse_iso_datetime(expiry_raw)
+    if expiry is not None and expiry <= datetime.now(UTC):
+        return False
+    return True
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
