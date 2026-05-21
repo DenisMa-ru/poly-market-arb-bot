@@ -9,9 +9,8 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/poly-market-arb-bot/.venv/bin/python scripts/paper_run.py
 Restart=always
 RestartSec=5
-User=ubuntu
-Group=ubuntu
+User=root
+Group=root
 
 [Install]
 WantedBy=multi-user.target
-
