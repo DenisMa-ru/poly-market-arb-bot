@@ -49,6 +49,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     settings = get_settings()
     filtered = await discover_updown_markets(client, settings.normalized_symbols())
     stats = ScanStats(discovered=len(filtered))
+    logged_no_opportunity = 0
     if filtered:
         logger.info(
             "discovered updown markets",
@@ -72,6 +73,23 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             )
             opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:
+                if logged_no_opportunity < 5:
+                    ask_up = yes_book.best_ask.price if yes_book.best_ask else None
+                    ask_down = no_book.best_ask.price if no_book.best_ask else None
+                    logger.info(
+                        "no opportunity",
+                        extra={
+                            "slug": market.slug,
+                            "symbol": market.symbol,
+                            "timeframe_minutes": market.timeframe_minutes,
+                            "ask_up": ask_up,
+                            "ask_down": ask_down,
+                            "sum_asks": None if ask_up is None or ask_down is None else ask_up + ask_down,
+                            "up_asks": len(yes_book.asks),
+                            "down_asks": len(no_book.asks),
+                        },
+                    )
+                    logged_no_opportunity += 1
                 continue
             logger.info(
                 "opportunity detected",
