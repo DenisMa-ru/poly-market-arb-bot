@@ -62,6 +62,15 @@ class PolymarketClient(BaseExchangeClient):
                 break
         return out
 
+    @retry_api_call
+    async def get_event_by_slug(self, slug: str) -> dict[str, Any] | None:
+        response = await self._gamma.get(f"/events/slug/{slug}")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        data = response.json()
+        return data if isinstance(data, dict) else None
+
     @staticmethod
     def _parse_gamma_market(raw: dict[str, Any]) -> Market | None:
         question = raw.get("question") or raw.get("title")
@@ -134,4 +143,3 @@ class PolymarketClient(BaseExchangeClient):
 
     async def close(self) -> None:
         await self._gamma.aclose()
-
