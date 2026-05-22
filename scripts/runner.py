@@ -261,13 +261,29 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                             reward_per_trade_usd=pair_mm.config.reward_per_trade_usd,
                         )
                     )
+                pair_state_for_eval = pair_state
+                if pair_mm_has_open_free_inventory and pair_state.free_up <= 0 and pair_state.free_down <= 0:
+                    pair_state_for_eval = PairMarketMakerState(
+                        paired_inventory=0.0,
+                        free_up=pair_state.free_up,
+                        free_down=pair_state.free_down,
+                        realized_pnl=pair_state.realized_pnl,
+                        reward_pnl=pair_state.reward_pnl,
+                        completed_pairs=pair_state.completed_pairs,
+                        split_notional=pair_state.split_notional,
+                    )
                 pair_mm_result = pair_mm_runner.evaluate(
                     market,
                     yes_book,
                     no_book,
-                    pair_state,
+                    pair_state_for_eval,
                     remaining_fill_budget=pair_mm_remaining_fill_budget,
                 )
+                if pair_state_for_eval is not pair_state:
+                    pair_state.realized_pnl = pair_state_for_eval.realized_pnl
+                    pair_state.reward_pnl = pair_state_for_eval.reward_pnl
+                    pair_state.completed_pairs = pair_state_for_eval.completed_pairs
+                    pair_state.split_notional = pair_state_for_eval.split_notional
                 if pair_mm_result.get("sold_up") or pair_mm_result.get("sold_down"):
                     pair_mm_remaining_fill_budget = max(0, pair_mm_remaining_fill_budget - 1)
                 pair_mm_total_paired_inventory = round(sum(state.paired_inventory for state in pair_mm_states.values()), 4)
