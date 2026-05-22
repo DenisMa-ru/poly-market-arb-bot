@@ -31,6 +31,43 @@ class WsSignalRunner:
     def __init__(self, config: WsSignalConfig) -> None:
         self.config = config
 
+    @staticmethod
+    def _should_open_mean_reversion(
+        *,
+        best_bid: float | None,
+        best_ask: float | None,
+        spread: float | None,
+        up_streak: int,
+        down_streak: int,
+        take_profit: float,
+    ) -> bool:
+        if best_bid is None or best_ask is None or spread is None:
+            return False
+        if down_streak < 3 or up_streak != 0:
+            return False
+        if spread > 0.01:
+            return False
+        if float(best_bid) < 0.05 or float(best_ask) > 0.95:
+            return False
+        midpoint = (float(best_bid) + float(best_ask)) / 2
+        if midpoint > 0.5:
+            return False
+        if (1.0 - float(best_ask)) < take_profit:
+            return False
+        return True
+
+    @staticmethod
+    def _resolve_exit_reason(*, pnl: float, hold_seconds: float, up_streak: int, config: WsSignalConfig) -> str | None:
+        if pnl >= config.take_profit:
+            return "take_profit"
+        if pnl <= -config.stop_loss:
+            return "stop_loss"
+        if up_streak >= 2:
+            return "bounce_faded"
+        if hold_seconds >= config.max_hold_seconds:
+            return "max_hold"
+        return None
+
     async def run(self, *, markets: list[UpDownMarket]) -> tuple[dict[str, object], list[dict[str, object]]]:
         if websockets is None:
             raise RuntimeError("websockets package is not installed")
@@ -132,20 +169,19 @@ class WsSignalRunner:
                             position = state.get("position")
                             if (
                                 position is None
-                                and state.get("up_streak", 0) >= 3
-                                and state.get("down_streak", 0) == 0
-                                and best_bid is not None
-                                and best_ask is not None
-                                and spread is not None
-                                and spread <= 0.01
-                                and float(best_bid) >= 0.05
-                                and float(best_ask) <= 0.95
-                                and (1.0 - float(best_ask)) >= self.config.take_profit
+                                and self._should_open_mean_reversion(
+                                    best_bid=float(best_bid) if best_bid is not None else None,
+                                    best_ask=float(best_ask) if best_ask is not None else None,
+                                    spread=spread,
+                                    up_streak=int(state.get("up_streak", 0)),
+                                    down_streak=int(state.get("down_streak", 0)),
+                                    take_profit=self.config.take_profit,
+                                )
                             ):
                                 state["position"] = {
                                     "entry_price": float(best_ask),
                                     "entry_ts": now_ts,
-                                    "entry_reason": "up_streak_3_tight_spread",
+                                    "entry_reason": "down_streak_3_tight_spread_midpoint_reversion",
                                     "entry_best_bid": best_bid,
                                     "entry_best_ask": best_ask,
                                     "max_favorable_excursion": 0.0,
@@ -160,15 +196,12 @@ class WsSignalRunner:
                             hold_seconds = now_ts - float(position["entry_ts"])
                             position["max_favorable_excursion"] = max(float(position.get("max_favorable_excursion", 0.0)), pnl)
                             position["max_adverse_excursion"] = min(float(position.get("max_adverse_excursion", 0.0)), pnl)
-                            exit_reason = None
-                            if pnl >= self.config.take_profit:
-                                exit_reason = "take_profit"
-                            elif pnl <= -self.config.stop_loss:
-                                exit_reason = "stop_loss"
-                            elif state.get("down_streak", 0) >= 2:
-                                exit_reason = "reversal"
-                            elif hold_seconds >= self.config.max_hold_seconds:
-                                exit_reason = "max_hold"
+                            exit_reason = self._resolve_exit_reason(
+                                pnl=pnl,
+                                hold_seconds=hold_seconds,
+                                up_streak=int(state.get("up_streak", 0)),
+                                config=self.config,
+                            )
                             if exit_reason is None:
                                 continue
                             closed_trades.append(

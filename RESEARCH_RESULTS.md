@@ -7,7 +7,8 @@ Scope: short BTC/ETH up/down markets on Polymarket, paper mode only.
 1. Pre-order bundle simulation
 2. Passive market making v1
 3. WebSocket market making v2/v3
-4. WebSocket momentum/imbalance signal v1/v2
+4. WebSocket momentum/imbalance signal v1/v3
+5. WebSocket mean reversion signal v1
 
 ### Main findings
 
@@ -34,6 +35,12 @@ Scope: short BTC/ETH up/down markets on Polymarket, paper mode only.
 - Tighter entry filters and reversal exits did not make the hypothesis profitable.
 - Conclusion: naive taker-style momentum on these markets does not overcome the spread.
 
+#### 5) WS mean reversion paper strategy v1
+- The momentum entry has been replaced with a first mean-reversion hypothesis on the same WS telemetry base.
+- Current v1 logic looks for repeated sell pressure (`down_streak >= 3`), tight spread, non-extreme prices, and lower-half price location before entering.
+- Exit logic still uses simple TP/SL/time stop plus bounce-failure detection.
+- Status: implemented and ready for server-side paper evaluation; no profitability conclusion yet.
+
 ### Practical conclusion
 
 At this stage, the repository has a usable paper research framework for Polymarket:
@@ -48,10 +55,11 @@ But none of the tested simple alpha ideas have been validated as robustly profit
 - pre-order bundles: weak
 - passive maker MM: weak
 - simple WS momentum signal: weak
+- WS mean reversion v1: not evaluated enough yet
 
 ### Recommended next direction
 
-If continuing Polymarket-only research, the next hypothesis should be more selective and microstructure-aware, for example:
+If continuing Polymarket-only research after mean-reversion v1, the next hypothesis should be more selective and microstructure-aware, for example:
 - regime-based event selection
 - imbalance only when expected move is larger than one tick
 - resolution-proximity behavior
