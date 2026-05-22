@@ -20,6 +20,7 @@ from src.markets.updown_discovery import discover_updown_markets
 from src.markets.updown_parser import UpDownMarket
 from src.storage.db import Database
 from src.strategy.market_maker import MarketMaker, MarketMakerConfig, MarketMakerState
+from src.strategy.market_maker_ws import WsMarketMakerRunner
 from src.strategy.preorder import PreOrderConfig, PreOrderSimulator
 from src.utils.logger import get_logger, setup_logging
 
@@ -110,6 +111,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     snapshots: list[MarketSnapshot] = []
     preorder_results: list[dict[str, object]] = []
     mm_results: list[dict[str, object]] = []
+    mm_ws_results: list[dict[str, object]] = []
     preorder = PreOrderSimulator(
         PreOrderConfig(
             enabled=settings.preorder_enabled,
@@ -298,6 +300,15 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
         mm_summary = _summarize_mm_rows(mm_results)
         db.insert_event("INFO", "mm telemetry", {"summary": mm_summary, "results": mm_results[:20]})
         logger.info("mm summary", extra=mm_summary)
+        if settings.mm_ws_enabled:
+            ws_runner = WsMarketMakerRunner(mm=mm, states=mm_states)
+            ws_summary, mm_ws_results = await ws_runner.run(
+                markets=filtered,
+                runtime_seconds=settings.mm_ws_runtime_seconds,
+                max_messages=settings.mm_ws_max_messages,
+            )
+            db.insert_event("INFO", "mm ws telemetry", {"summary": ws_summary, "results": mm_ws_results})
+            logger.info("mm ws summary", extra=ws_summary)
     return stats
 
 

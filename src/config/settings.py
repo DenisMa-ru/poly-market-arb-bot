@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     mm_reprice_threshold_bps: float = 10.0
     mm_max_inventory_per_market: float = 50.0
     mm_markets_limit: int = 5
+    mm_ws_enabled: bool = False
+    mm_ws_runtime_seconds: int = 15
+    mm_ws_max_messages: int = 200
     db_path: str = "data/poly_market_arb.db"
     log_level: str = "INFO"
 

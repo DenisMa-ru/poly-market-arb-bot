@@ -40,6 +40,8 @@ preorder_results = _event_df(db.recent_preorder_results(limit=200))
 preorder_candidates = _event_df(db.recent_preorder_candidates(limit=200))
 mm_events = _event_df(db.recent_mm_events(limit=100))
 mm_results = _event_df(db.recent_mm_results(limit=200))
+mm_ws_events = _event_df(db.recent_mm_ws_events(limit=100))
+mm_ws_results = _event_df(db.recent_mm_ws_results(limit=200))
 
 balance = db.latest_balance()
 open_exposure = db.open_exposure_usd()
@@ -51,6 +53,7 @@ st.caption("Paper-mode dashboard for discovery, near-arb tracking, and execution
 latest_scan = scan_events.iloc[0] if not scan_events.empty else None
 latest_preorder = preorder_events.iloc[0] if not preorder_events.empty else None
 latest_mm = mm_events.iloc[0] if not mm_events.empty else None
+latest_mm_ws = mm_ws_events.iloc[0] if not mm_ws_events.empty else None
 
 top1, top2, top3, top4, top5 = st.columns(5)
 top1.metric("Paper balance", f"${balance:,.2f}" if balance is not None else "—")
@@ -95,6 +98,20 @@ if latest_mm is not None and "summary" in latest_mm:
     m6.metric("Ask fills", int(summary.get("ask_fills", 0)))
     m7.metric("Realized spread", f"${float(summary.get('realized_spread_capture', 0.0)):.3f}")
     m8.metric("Unrealized PnL", f"${float(summary.get('unrealized_pnl', 0.0)):.3f}")
+
+if latest_mm_ws is not None and "summary" in latest_mm_ws:
+    summary = latest_mm_ws["summary"] if isinstance(latest_mm_ws["summary"], dict) else {}
+    st.subheader("Paper market making WS v2")
+    w1, w2, w3, w4 = st.columns(4)
+    w1.metric("WS messages", int(summary.get("messages", 0)))
+    w2.metric("Book events", int(summary.get("books", 0)))
+    w3.metric("Price changes", int(summary.get("price_changes", 0)))
+    w4.metric("Quoted markets", int(summary.get("quoted_markets", 0)))
+    w5, w6, w7, w8 = st.columns(4)
+    w5.metric("Fills", int(summary.get("fills", 0)))
+    w6.metric("Bid fills", int(summary.get("bid_fills", 0)))
+    w7.metric("Ask fills", int(summary.get("ask_fills", 0)))
+    w8.metric("Net inventory", f"{float(summary.get('net_inventory', 0.0)):.2f}")
 
 left, right = st.columns((1.2, 1.8))
 
@@ -198,6 +215,31 @@ else:
         "spread_capture",
         "unrealized_pnl",
         "replaces",
+        "status",
+    ]
+    cols = [col for col in preferred if col in display.columns]
+    st.dataframe(display[cols], use_container_width=True, hide_index=True)
+
+st.subheader("MM WS quote/fill results")
+if mm_ws_results.empty:
+    st.info("Market making WS telemetry is not enabled or no data yet.")
+else:
+    display = mm_ws_results.copy()
+    preferred = [
+        "created_at",
+        "slug",
+        "symbol",
+        "timeframe_minutes",
+        "bid",
+        "ask",
+        "best_bid",
+        "best_ask",
+        "filled_bid",
+        "filled_ask",
+        "inventory_before",
+        "inventory_after",
+        "spread_capture",
+        "unrealized_pnl",
         "status",
     ]
     cols = [col for col in preferred if col in display.columns]
