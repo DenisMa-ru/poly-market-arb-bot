@@ -184,3 +184,22 @@ def test_pair_mm_respects_scan_level_fill_budget() -> None:
     assert result["sold_up"] is False
     assert result["sold_down"] is False
     assert result["paired_inventory_after"] == 1.0
+
+
+def test_pair_mm_adds_reward_bps_on_trade_notional() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, reward_per_trade_usd=0.0, reward_bps_per_trade=20.0))
+    state = PairMarketMakerState(paired_inventory=1.0)
+    result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.2, 0.8), state)
+    assert result["sold_up"] is True
+    assert result["reward_pnl_delta"] == 0.001
+
+
+def test_pair_mm_counts_repaired_free_inventory_as_completed_pairs() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=0, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=0.0, free_up=1.0, free_down=1.0)
+    result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.2, 0.8), state, remaining_fill_budget=0)
+    assert result["completed_pairs_delta"] == 1.0
+    assert result["paired_inventory_after"] == 1.0
+    assert result["free_up_after"] == 0.0
+    assert result["free_down_after"] == 0.0
+    assert result["realized_pnl_delta"] == 0.0

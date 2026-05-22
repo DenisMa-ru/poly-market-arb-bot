@@ -18,6 +18,7 @@ class PairMarketMakerConfig:
     skew_step: float
     max_skew: float
     reward_per_trade_usd: float
+    reward_bps_per_trade: float = 0.0
 
 
 FILL_BUFFER = 0.02
@@ -43,6 +44,12 @@ class PairMarketMaker:
         if up_bid is None or down_bid is None:
             return 0.0
         return round((paired_inventory * (up_bid + down_bid)) + (free_up * up_bid) + (free_down * down_bid), 4)
+
+    def _reward_for_trade(self, *, quote: float, size: float) -> float:
+        reward = self.config.reward_per_trade_usd
+        if self.config.reward_bps_per_trade > 0:
+            reward += quote * size * (self.config.reward_bps_per_trade / 10000.0)
+        return round(reward, 4)
 
     def evaluate(
         self,
@@ -242,7 +249,7 @@ class PairMarketMaker:
                 state.paired_inventory = round(state.paired_inventory - size, 4)
                 state.free_down = round(state.free_down + size, 4)
                 state.realized_pnl = round(state.realized_pnl + (up_quote - 0.5), 4)
-            state.reward_pnl = round(state.reward_pnl + self.config.reward_per_trade_usd, 4)
+            state.reward_pnl = round(state.reward_pnl + self._reward_for_trade(quote=up_quote, size=size), 4)
         if sold_down:
             unwind_size = min(size, state.free_down)
             if unwind_size > 0:
@@ -252,13 +259,14 @@ class PairMarketMaker:
                 state.paired_inventory = round(state.paired_inventory - size, 4)
                 state.free_up = round(state.free_up + size, 4)
                 state.realized_pnl = round(state.realized_pnl + (down_quote - 0.5), 4)
-            state.reward_pnl = round(state.reward_pnl + self.config.reward_per_trade_usd, 4)
+            state.reward_pnl = round(state.reward_pnl + self._reward_for_trade(quote=down_quote, size=size), 4)
 
         repair_size = min(state.free_up, state.free_down)
         if repair_size > 0:
             state.free_up = round(state.free_up - repair_size, 4)
             state.free_down = round(state.free_down - repair_size, 4)
             state.paired_inventory = round(state.paired_inventory + repair_size, 4)
+            state.completed_pairs = round(state.completed_pairs + repair_size, 4)
 
         split_pairs = 0.0
         free_inventory_total = round(state.free_up + state.free_down, 4)

@@ -278,6 +278,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             skew_step=settings.pair_mm_skew_step,
             max_skew=settings.pair_mm_max_skew,
             reward_per_trade_usd=settings.pair_mm_reward_per_trade_usd,
+            reward_bps_per_trade=settings.pair_mm_reward_bps_per_trade,
         )
     )
     pair_mm_states: dict[str, PairMarketMakerState] = getattr(scan_once, "_pair_mm_states", {})
