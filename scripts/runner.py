@@ -195,6 +195,29 @@ def _build_pair_mm_skipped_row(
     }
 
 
+def _build_pair_mm_runner_for_scan(
+    pair_mm: PairMarketMaker,
+    *,
+    replenish_blocked: bool,
+) -> PairMarketMaker:
+    if not replenish_blocked:
+        return pair_mm
+    return PairMarketMaker(
+        PairMarketMakerConfig(
+            enabled=pair_mm.config.enabled,
+            markets_limit=pair_mm.config.markets_limit,
+            target_pairs=pair_mm.config.target_pairs,
+            min_paired_inventory=0.0,
+            replenish_batch_size=pair_mm.config.replenish_batch_size,
+            max_free_inventory_per_side=pair_mm.config.max_free_inventory_per_side,
+            quote_edge=pair_mm.config.quote_edge,
+            skew_step=pair_mm.config.skew_step,
+            max_skew=pair_mm.config.max_skew,
+            reward_per_trade_usd=pair_mm.config.reward_per_trade_usd,
+        )
+    )
+
+
 def build_client() -> PolymarketClient:
     settings = get_settings()
     settings.assert_polymarket_ready()
@@ -260,6 +283,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     pair_mm_states: dict[str, PairMarketMakerState] = getattr(scan_once, "_pair_mm_states", {})
     setattr(scan_once, "_pair_mm_states", pair_mm_states)
     pair_mm_remaining_fill_budget = 1
+    pair_mm_remaining_replenish_budget = 1
     pair_mm_total_paired_inventory = round(sum(state.paired_inventory for state in pair_mm_states.values()), 4)
     pair_mm_has_open_free_inventory = any(state.free_up > 0 or state.free_down > 0 for state in pair_mm_states.values())
     pair_mm_replenish_blocked = (
@@ -310,22 +334,10 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 mm_results.append(mm_result.__dict__)
             if settings.pair_mm_enabled and len(pair_mm_results) < settings.pair_mm_markets_limit:
                 pair_state = pair_mm_states.setdefault(market.slug, PairMarketMakerState())
-                pair_mm_runner = pair_mm
-                if pair_mm_replenish_blocked:
-                    pair_mm_runner = PairMarketMaker(
-                        PairMarketMakerConfig(
-                            enabled=pair_mm.config.enabled,
-                            markets_limit=pair_mm.config.markets_limit,
-                            target_pairs=pair_mm.config.target_pairs,
-                            min_paired_inventory=0.0,
-                            replenish_batch_size=pair_mm.config.replenish_batch_size,
-                            max_free_inventory_per_side=pair_mm.config.max_free_inventory_per_side,
-                            quote_edge=pair_mm.config.quote_edge,
-                            skew_step=pair_mm.config.skew_step,
-                            max_skew=pair_mm.config.max_skew,
-                            reward_per_trade_usd=pair_mm.config.reward_per_trade_usd,
-                        )
-                    )
+                pair_mm_runner = _build_pair_mm_runner_for_scan(
+                    pair_mm,
+                    replenish_blocked=pair_mm_replenish_blocked or pair_mm_remaining_replenish_budget <= 0,
+                )
                 if pair_mm_has_open_free_inventory and pair_state.free_up <= 0 and pair_state.free_down <= 0:
                     pair_mm_result = _build_pair_mm_skipped_row(
                         market=market,
@@ -343,6 +355,8 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                     )
                 if pair_mm_result.get("sold_up") or pair_mm_result.get("sold_down"):
                     pair_mm_remaining_fill_budget = max(0, pair_mm_remaining_fill_budget - 1)
+                if float(pair_mm_result.get("split_pairs", 0.0)) > 0.0:
+                    pair_mm_remaining_replenish_budget = max(0, pair_mm_remaining_replenish_budget - 1)
                 pair_mm_total_paired_inventory = round(sum(state.paired_inventory for state in pair_mm_states.values()), 4)
                 pair_mm_has_open_free_inventory = any(state.free_up > 0 or state.free_down > 0 for state in pair_mm_states.values())
                 pair_mm_replenish_blocked = (
