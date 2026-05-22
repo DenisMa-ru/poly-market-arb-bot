@@ -53,6 +53,7 @@ def test_replenish_budget_exhaustion_disables_scan_replenish() -> None:
             quote_edge=0.01,
             skew_step=0.01,
             max_skew=3,
+            min_new_skew_edge=0.0,
             reward_per_trade_usd=0.0,
         )
     )

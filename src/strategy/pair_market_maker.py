@@ -17,6 +17,7 @@ class PairMarketMakerConfig:
     quote_edge: float
     skew_step: float
     max_skew: float
+    min_new_skew_edge: float
     reward_per_trade_usd: float
     reward_bps_per_trade: float = 0.0
 
@@ -238,6 +239,11 @@ class PairMarketMaker:
         fills_allowed = remaining_fill_budget is None or remaining_fill_budget > 0
         if not fills_allowed:
             sold_up = False
+            sold_down = False
+
+        if sold_up and state.free_up <= 0 and up_quote - 0.5 < self.config.min_new_skew_edge:
+            sold_up = False
+        if sold_down and state.free_down <= 0 and down_quote - 0.5 < self.config.min_new_skew_edge:
             sold_down = False
 
         if sold_up:
