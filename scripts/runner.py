@@ -96,6 +96,7 @@ def _summarize_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
 def _summarize_pair_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
     sold_up = sum(1 for row in rows if row.get("sold_up"))
     sold_down = sum(1 for row in rows if row.get("sold_down"))
+    blocked_min_new_skew_edge = sum(1 for row in rows if row.get("status") == "blocked_min_new_skew_edge")
     completed_pairs = round(sum(float(row.get("completed_pairs_delta", 0.0)) for row in rows), 4)
     split_notional = round(sum(float(row.get("split_notional_delta", 0.0)) for row in rows), 4)
     split_pairs = round(sum(float(row.get("split_pairs", 0.0)) for row in rows), 4)
@@ -115,6 +116,7 @@ def _summarize_pair_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
         "markets": len(rows),
         "sold_up": sold_up,
         "sold_down": sold_down,
+        "blocked_min_new_skew_edge": blocked_min_new_skew_edge,
         "completed_pairs": completed_pairs,
         "split_pairs": split_pairs,
         "split_notional": split_notional,
@@ -215,6 +217,7 @@ def _build_pair_mm_runner_for_scan(
             max_skew=pair_mm.config.max_skew,
             min_new_skew_edge=pair_mm.config.min_new_skew_edge,
             reward_per_trade_usd=pair_mm.config.reward_per_trade_usd,
+            reward_bps_per_trade=pair_mm.config.reward_bps_per_trade,
         )
     )
 

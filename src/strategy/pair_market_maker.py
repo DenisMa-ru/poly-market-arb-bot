@@ -241,10 +241,13 @@ class PairMarketMaker:
             sold_up = False
             sold_down = False
 
+        blocked_new_skew_side = ""
         if sold_up and state.free_up <= 0 and up_quote - 0.5 < self.config.min_new_skew_edge:
             sold_up = False
+            blocked_new_skew_side = "up"
         if sold_down and state.free_down <= 0 and down_quote - 0.5 < self.config.min_new_skew_edge:
             sold_down = False
+            blocked_new_skew_side = "down"
 
         if sold_up:
             unwind_size = min(size, state.free_up)
@@ -310,6 +313,10 @@ class PairMarketMaker:
         split_notional_delta = round(state.split_notional - split_notional_before, 4)
         net_pnl_delta = round(realized_delta + reward_delta + skew_mark_pnl, 4)
 
+        status = "quoted_pair_mm"
+        if not sold_up and not sold_down and blocked_new_skew_side:
+            status = "blocked_min_new_skew_edge"
+
         return {
             "slug": market.slug,
             "symbol": market.symbol,
@@ -320,6 +327,7 @@ class PairMarketMaker:
             "down_ask": down_ask,
             "up_quote": up_quote,
             "down_quote": down_quote,
+            "blocked_new_skew_side": blocked_new_skew_side,
             "sold_up": sold_up,
             "sold_down": sold_down,
             "pair_bid_sum": pair_bid_sum,
@@ -350,5 +358,5 @@ class PairMarketMaker:
             "skew_mark_pnl": skew_mark_pnl,
             "net_pnl": round(state.realized_pnl + state.reward_pnl + skew_mark_pnl, 4),
             "net_pnl_delta": net_pnl_delta,
-            "status": "quoted_pair_mm",
+            "status": status,
         }

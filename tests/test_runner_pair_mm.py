@@ -1,4 +1,4 @@
-from scripts.runner import _build_pair_mm_runner_for_scan, _build_pair_mm_skipped_row
+from scripts.runner import _build_pair_mm_runner_for_scan, _build_pair_mm_skipped_row, _summarize_pair_mm_rows
 from src.clients.base import Orderbook, OrderbookLevel, Outcome, Venue
 from src.markets.updown_parser import UpDownMarket
 from src.strategy.pair_market_maker import PairMarketMaker, PairMarketMakerConfig, PairMarketMakerState
@@ -68,3 +68,14 @@ def test_replenish_budget_exhaustion_disables_scan_replenish() -> None:
 
     assert result["split_pairs"] == 0.0
     assert state.paired_inventory == 0.0
+
+
+def test_pair_mm_summary_counts_min_new_skew_blocks() -> None:
+    summary = _summarize_pair_mm_rows(
+        [
+            {"status": "blocked_min_new_skew_edge", "sold_up": False, "sold_down": False},
+            {"status": "quoted_pair_mm", "sold_up": False, "sold_down": False},
+        ]
+    )
+
+    assert summary["blocked_min_new_skew_edge"] == 1

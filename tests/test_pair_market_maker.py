@@ -210,8 +210,10 @@ def test_pair_mm_blocks_fresh_skew_when_edge_below_minimum() -> None:
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.2, 0.8), state)
     assert result["sold_up"] is False
+    assert result["blocked_new_skew_side"] == "up"
     assert result["free_down_after"] == 0.0
     assert result["paired_inventory_after"] == 1.0
+    assert result["status"] == "blocked_min_new_skew_edge"
 
 
 def test_pair_mm_allows_unwind_even_when_min_new_skew_edge_is_high() -> None:
