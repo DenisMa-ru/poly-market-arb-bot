@@ -271,11 +271,13 @@ class PairMarketMaker:
             state.reward_pnl = round(state.reward_pnl + self._reward_for_trade(quote=down_quote, size=size), 4)
 
         repair_size = min(state.free_up, state.free_down)
+        repaired_pairs = False
         if repair_size > 0:
             state.free_up = round(state.free_up - repair_size, 4)
             state.free_down = round(state.free_down - repair_size, 4)
             state.paired_inventory = round(state.paired_inventory + repair_size, 4)
             state.completed_pairs = round(state.completed_pairs + repair_size, 4)
+            repaired_pairs = True
 
         split_pairs = 0.0
         free_inventory_total = round(state.free_up + state.free_down, 4)
@@ -289,7 +291,7 @@ class PairMarketMaker:
             )
         replenish_ceiling = min(self.config.target_pairs, self.config.min_paired_inventory)
         needs_replenish = state.paired_inventory < replenish_ceiling
-        if can_replenish and needs_replenish and not has_fresh_one_sided_fill and not has_open_free_inventory:
+        if can_replenish and needs_replenish and not has_fresh_one_sided_fill and not has_open_free_inventory and not repaired_pairs:
             replenish_target = min(self.config.target_pairs, state.paired_inventory + self.config.replenish_batch_size)
             split_pairs = round(replenish_target - state.paired_inventory, 4)
         if split_pairs > 0:

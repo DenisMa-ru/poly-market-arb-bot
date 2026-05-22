@@ -205,6 +205,15 @@ def test_pair_mm_counts_repaired_free_inventory_as_completed_pairs() -> None:
     assert result["realized_pnl_delta"] == 0.0
 
 
+def test_pair_mm_does_not_replenish_in_same_scan_as_repair() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=2, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, min_new_skew_edge=0.0, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=0.0, free_up=1.0, free_down=1.0)
+    result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.2, 0.8), state, remaining_fill_budget=0)
+    assert result["completed_pairs_delta"] == 1.0
+    assert result["split_pairs"] == 0.0
+    assert result["paired_inventory_after"] == 1.0
+
+
 def test_pair_mm_blocks_fresh_skew_when_edge_below_minimum() -> None:
     mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, min_new_skew_edge=0.1, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=1.0)
