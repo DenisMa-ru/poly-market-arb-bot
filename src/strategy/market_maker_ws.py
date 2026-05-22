@@ -39,6 +39,9 @@ class WsMarketMakerSummary:
     crossed_ask_count: int
     execution_bid_count: int
     execution_ask_count: int
+    entry_quotes_posted: int
+    exit_quotes_posted: int
+    inventory_reduction_events: int
 
 
 class WsMarketMakerRunner:
@@ -77,6 +80,9 @@ class WsMarketMakerRunner:
                 "crossed_ask_count": 0,
                 "execution_bid_count": 0,
                 "execution_ask_count": 0,
+                "entry_quotes_posted": 0,
+                "exit_quotes_posted": 0,
+                "inventory_reduction_events": 0,
             }, []
 
         results: dict[str, dict[str, object]] = {}
@@ -90,6 +96,9 @@ class WsMarketMakerRunner:
             "crossed_ask_count": 0,
             "execution_bid_count": 0,
             "execution_ask_count": 0,
+            "entry_quotes_posted": 0,
+            "exit_quotes_posted": 0,
+            "inventory_reduction_events": 0,
         }
         started = time.time()
 
@@ -157,8 +166,12 @@ class WsMarketMakerRunner:
                             "crossed_ask": False,
                             "near_touch_bid": False,
                             "near_touch_ask": False,
+                            "inventory_regime": quote.inventory_regime,
+                            "exit_pressure": quote.exit_pressure,
                             "status": "quoted_ws",
                         }
+                        metrics["entry_quotes_posted"] += 1 if state.inventory <= 0 else 0
+                        metrics["exit_quotes_posted"] += 1 if state.inventory > 0 else 0
                     elif event_type == "price_change":
                         counts["price_changes"] += 1
                         for change in event.get("price_changes", []):
@@ -202,6 +215,7 @@ class WsMarketMakerRunner:
                                     state.avg_entry_price = 0.0
                                 state.ask_filled = True
                                 metrics["execution_ask_count"] += 1
+                                metrics["inventory_reduction_events"] += 1
                             if bid_to_best_ask is not None:
                                 metrics["bid_to_best_ask"].append(bid_to_best_ask)
                             if ask_to_best_bid is not None:
@@ -227,6 +241,8 @@ class WsMarketMakerRunner:
                                     "crossed_ask": crossed_ask,
                                     "near_touch_bid": near_touch_bid,
                                     "near_touch_ask": near_touch_ask,
+                                    "inventory_regime": current.get("inventory_regime"),
+                                    "exit_pressure": current.get("exit_pressure"),
                                     "status": "fill_ws" if filled_bid or filled_ask else f"price_change_{side.lower()}",
                                 }
                             )
@@ -251,5 +267,8 @@ class WsMarketMakerRunner:
             "crossed_ask_count": metrics["crossed_ask_count"],
             "execution_bid_count": metrics["execution_bid_count"],
             "execution_ask_count": metrics["execution_ask_count"],
+            "entry_quotes_posted": metrics["entry_quotes_posted"],
+            "exit_quotes_posted": metrics["exit_quotes_posted"],
+            "inventory_reduction_events": metrics["inventory_reduction_events"],
         }
         return summary, rows[:20]

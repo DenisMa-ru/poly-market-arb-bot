@@ -24,6 +24,8 @@ class Quote:
     spread: float
     size: float
     skew_bps: float
+    inventory_regime: str
+    exit_pressure: float
 
 
 @dataclass(frozen=True)
@@ -70,13 +72,35 @@ class MarketMaker:
         mid = (best_bid + best_ask) / 2.0
         spread = max(mid * (self.config.spread_bps / 10_000.0), 0.01)
         skew_ratio = 0.0 if self.config.max_inventory_per_market <= 0 else max(min(inventory / self.config.max_inventory_per_market, 1.0), -1.0)
-        bid_skew_bps = skew_ratio * self.config.spread_bps
-        ask_skew_bps = skew_ratio * (self.config.spread_bps * 1.5)
+        if skew_ratio <= 0.0:
+            inventory_regime = "flat"
+            exit_pressure = 0.0
+            bid_skew_bps = skew_ratio * self.config.spread_bps
+            ask_skew_bps = skew_ratio * self.config.spread_bps
+        elif skew_ratio < 0.5:
+            inventory_regime = "long_light"
+            exit_pressure = 0.5
+            bid_skew_bps = skew_ratio * (self.config.spread_bps * 1.5)
+            ask_skew_bps = skew_ratio * (self.config.spread_bps * 2.5)
+        else:
+            inventory_regime = "long_heavy"
+            exit_pressure = 1.0
+            bid_skew_bps = skew_ratio * (self.config.spread_bps * 2.0)
+            ask_skew_bps = skew_ratio * (self.config.spread_bps * 4.0)
         bid = max(0.01, mid - spread / 2.0 - mid * (bid_skew_bps / 10_000.0))
         ask = min(0.99, mid + spread / 2.0 - mid * (ask_skew_bps / 10_000.0))
         bid = round(bid, 2)
         ask = round(max(ask, bid + 0.01), 2)
-        return Quote(bid=bid, ask=ask, mid=round(mid, 4), spread=round(ask - bid, 4), size=self.config.order_size, skew_bps=round(ask_skew_bps, 2))
+        return Quote(
+            bid=bid,
+            ask=ask,
+            mid=round(mid, 4),
+            spread=round(ask - bid, 4),
+            size=self.config.order_size,
+            skew_bps=round(ask_skew_bps, 2),
+            inventory_regime=inventory_regime,
+            exit_pressure=exit_pressure,
+        )
 
     def evaluate(
         self,
