@@ -31,8 +31,6 @@ Implemented now:
 Not implemented yet:
 
 - live trading
-- WebSocket market feed
-- unit tests
 - production-grade market title parsing hardening
 
 ## Project structure
@@ -155,10 +153,10 @@ Adjust `User`, `Group`, and paths if needed.
 - This version is intended for paper validation first.
 - Market parsing for BTC/ETH 5m markets is still regex-based and should be verified against real Gamma responses before relying on it in production.
 - SQLite database files are ignored by git.
+- Research summary: see [`RESEARCH_RESULTS.md`](RESEARCH_RESULTS.md).
 
 ## Next steps
 
 - harden market parsing against real market titles
-- add tests
-- add live mode with safeguards
-- add server service files
+- test more selective Polymarket-only microstructure hypotheses
+- add live mode with safeguards only after paper validation
