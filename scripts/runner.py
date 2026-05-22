@@ -19,6 +19,7 @@ from src.execution.settlement import SettlementEngine
 from src.markets.updown_discovery import discover_updown_markets
 from src.markets.updown_parser import UpDownMarket
 from src.storage.db import Database
+from src.strategy.market_maker import MarketMaker, MarketMakerConfig, MarketMakerState
 from src.strategy.preorder import PreOrderConfig, PreOrderSimulator
 from src.utils.logger import get_logger, setup_logging
 
@@ -67,6 +68,28 @@ def _summarize_preorder_rows(rows: list[dict[str, object]]) -> dict[str, object]
     }
 
 
+def _summarize_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
+    fills = sum(1 for row in rows if row.get("filled_bid") or row.get("filled_ask"))
+    bid_fills = sum(1 for row in rows if row.get("filled_bid"))
+    ask_fills = sum(1 for row in rows if row.get("filled_ask"))
+    replaces = sum(int(row.get("replaces", 0)) for row in rows)
+    realized = round(sum(float(row.get("spread_capture", 0.0)) for row in rows), 4)
+    unrealized_values = [float(row["unrealized_pnl"]) for row in rows if row.get("unrealized_pnl") is not None]
+    inventories = [float(row["inventory_after"]) for row in rows if row.get("inventory_after") is not None]
+    return {
+        "markets": len(rows),
+        "fills": fills,
+        "bid_fills": bid_fills,
+        "ask_fills": ask_fills,
+        "fill_rate": round(fills / len(rows), 4) if rows else 0.0,
+        "replaces": replaces,
+        "realized_spread_capture": realized,
+        "unrealized_pnl": round(sum(unrealized_values), 4) if unrealized_values else 0.0,
+        "net_inventory": round(sum(inventories), 4) if inventories else 0.0,
+        "max_inventory": round(max(inventories), 4) if inventories else 0.0,
+    }
+
+
 def build_client() -> PolymarketClient:
     settings = get_settings()
     settings.assert_polymarket_ready()
@@ -86,6 +109,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     logged_no_opportunity = 0
     snapshots: list[MarketSnapshot] = []
     preorder_results: list[dict[str, object]] = []
+    mm_results: list[dict[str, object]] = []
     preorder = PreOrderSimulator(
         PreOrderConfig(
             enabled=settings.preorder_enabled,
@@ -95,6 +119,18 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             partial_exit_price=settings.preorder_partial_exit_price,
         )
     )
+    mm = MarketMaker(
+        MarketMakerConfig(
+            enabled=settings.mm_enabled,
+            spread_bps=settings.mm_spread_bps,
+            order_size=settings.mm_order_size,
+            reprice_threshold_bps=settings.mm_reprice_threshold_bps,
+            max_inventory_per_market=settings.mm_max_inventory_per_market,
+            markets_limit=settings.mm_markets_limit,
+        )
+    )
+    mm_states: dict[str, MarketMakerState] = getattr(scan_once, "_mm_states", {})
+    setattr(scan_once, "_mm_states", mm_states)
     if filtered:
         logger.info(
             "discovered updown markets",
@@ -133,6 +169,10 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             if settings.preorder_enabled:
                 preorder_result = preorder.evaluate(market, yes_book, no_book)
                 preorder_results.append(preorder_result.__dict__)
+            if settings.mm_enabled and len(mm_results) < settings.mm_markets_limit:
+                state = mm_states.setdefault(market.slug, MarketMakerState())
+                mm_result = mm.evaluate(market, yes_book, state)
+                mm_results.append(mm_result.__dict__)
             opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:
                 if logged_no_opportunity < 5:
@@ -254,6 +294,10 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             },
         )
         logger.info("preorder summary", extra=summary)
+    if settings.mm_enabled:
+        mm_summary = _summarize_mm_rows(mm_results)
+        db.insert_event("INFO", "mm telemetry", {"summary": mm_summary, "results": mm_results[:20]})
+        logger.info("mm summary", extra=mm_summary)
     return stats
 
 

@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     preorder_target_price_down: float = 0.49
     preorder_max_bundle_cost: float = 0.98
     preorder_partial_exit_price: float = 0.47
+    mm_enabled: bool = False
+    mm_spread_bps: float = 100.0
+    mm_order_size: float = 10.0
+    mm_reprice_threshold_bps: float = 10.0
+    mm_max_inventory_per_market: float = 50.0
+    mm_markets_limit: int = 5
     db_path: str = "data/poly_market_arb.db"
     log_level: str = "INFO"
 

@@ -38,6 +38,8 @@ near_arbs = _event_df(db.recent_near_arb_markets(limit=200))
 preorder_events = _event_df(db.recent_preorder_events(limit=100))
 preorder_results = _event_df(db.recent_preorder_results(limit=200))
 preorder_candidates = _event_df(db.recent_preorder_candidates(limit=200))
+mm_events = _event_df(db.recent_mm_events(limit=100))
+mm_results = _event_df(db.recent_mm_results(limit=200))
 
 balance = db.latest_balance()
 open_exposure = db.open_exposure_usd()
@@ -48,6 +50,7 @@ st.caption("Paper-mode dashboard for discovery, near-arb tracking, and execution
 
 latest_scan = scan_events.iloc[0] if not scan_events.empty else None
 latest_preorder = preorder_events.iloc[0] if not preorder_events.empty else None
+latest_mm = mm_events.iloc[0] if not mm_events.empty else None
 
 top1, top2, top3, top4, top5 = st.columns(5)
 top1.metric("Paper balance", f"${balance:,.2f}" if balance is not None else "—")
@@ -78,6 +81,20 @@ if latest_preorder is not None and "summary" in latest_preorder:
     p6.metric("Rolling full fill rate", f"{float(rolling.get('full_fill_rate', 0.0)) * 100:.1f}%")
     p7.metric("Avg partial exit loss", f"${float(summary['avg_partial_exit_loss']):.3f}" if summary.get("avg_partial_exit_loss") is not None else "—")
     p8.metric("Rolling partial exit loss", f"${float(rolling['avg_partial_exit_loss']):.3f}" if rolling.get("avg_partial_exit_loss") is not None else "—")
+
+if latest_mm is not None and "summary" in latest_mm:
+    summary = latest_mm["summary"] if isinstance(latest_mm["summary"], dict) else {}
+    st.subheader("Paper market making")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Quoted markets", int(summary.get("markets", 0)))
+    m2.metric("Fills", int(summary.get("fills", 0)))
+    m3.metric("Fill rate", f"{float(summary.get('fill_rate', 0.0)) * 100:.1f}%")
+    m4.metric("Replaces", int(summary.get("replaces", 0)))
+    m5, m6, m7, m8 = st.columns(4)
+    m5.metric("Bid fills", int(summary.get("bid_fills", 0)))
+    m6.metric("Ask fills", int(summary.get("ask_fills", 0)))
+    m7.metric("Realized spread", f"${float(summary.get('realized_spread_capture', 0.0)):.3f}")
+    m8.metric("Unrealized PnL", f"${float(summary.get('unrealized_pnl', 0.0)):.3f}")
 
 left, right = st.columns((1.2, 1.8))
 
@@ -156,6 +173,32 @@ else:
         "distance_down",
         "missing_leg",
         "partial_exit_loss",
+    ]
+    cols = [col for col in preferred if col in display.columns]
+    st.dataframe(display[cols], use_container_width=True, hide_index=True)
+
+st.subheader("MM quote/fill results")
+if mm_results.empty:
+    st.info("Market making telemetry is not enabled or no data yet.")
+else:
+    display = mm_results.copy()
+    preferred = [
+        "created_at",
+        "slug",
+        "symbol",
+        "timeframe_minutes",
+        "bid",
+        "ask",
+        "best_bid",
+        "best_ask",
+        "filled_bid",
+        "filled_ask",
+        "inventory_before",
+        "inventory_after",
+        "spread_capture",
+        "unrealized_pnl",
+        "replaces",
+        "status",
     ]
     cols = [col for col in preferred if col in display.columns]
     st.dataframe(display[cols], use_container_width=True, hide_index=True)
