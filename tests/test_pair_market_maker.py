@@ -113,9 +113,10 @@ def test_pair_mm_skips_replenish_when_any_free_inventory_is_open() -> None:
     state = PairMarketMakerState(paired_inventory=1.0, free_down=1.0)
     result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.2, 0.8), state)
     assert result["sold_up"] is False
-    assert result["sold_down"] is False
+    assert result["sold_down"] is True
     assert result["split_pairs"] == 0.0
     assert result["paired_inventory_after"] == 1.0
+    assert result["free_down_after"] == 0.0
 
 
 def test_pair_mm_does_not_replenish_above_target_when_min_exceeds_target() -> None:
@@ -145,6 +146,7 @@ def test_pair_mm_unwinds_free_down_inventory() -> None:
     state = PairMarketMakerState(paired_inventory=0.0, free_down=1.0)
     result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.5, 0.51), state)
     assert result["sold_down"] is True
+    assert result["down_quote"] == 0.51
     assert result["free_down_after"] == 0.0
     assert result["paired_inventory_after"] == 0.0
     assert result["realized_pnl_delta"] == 0.51
@@ -155,6 +157,7 @@ def test_pair_mm_unwinds_free_up_inventory() -> None:
     state = PairMarketMakerState(paired_inventory=0.0, free_up=1.0)
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.2, 0.8), state)
     assert result["sold_up"] is True
+    assert result["up_quote"] == 0.51
     assert result["free_up_after"] == 0.0
     assert result["paired_inventory_after"] == 0.0
     assert result["realized_pnl_delta"] == 0.51

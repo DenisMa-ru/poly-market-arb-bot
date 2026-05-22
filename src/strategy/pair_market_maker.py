@@ -126,6 +126,10 @@ class PairMarketMaker:
         down_quote = round(min(0.99, down_bid + self.config.quote_edge - max(0.0, down_skew) * self.config.skew_step), 2)
         up_quote = max(up_quote, up_bid)
         down_quote = max(down_quote, down_bid)
+        if state.free_up > 0 and up_ask is not None and state.free_down <= 0:
+            up_quote = up_ask
+        if state.free_down > 0 and down_ask is not None and state.free_up <= 0:
+            down_quote = down_ask
 
         paired = state.paired_inventory
         if paired >= 1.0 and pair_bid_sum is not None and pair_bid_sum >= 1.0 + self.config.quote_edge:
