@@ -249,14 +249,16 @@ class PairMarketMaker:
         split_pairs = 0.0
         free_inventory_total = round(state.free_up + state.free_down, 4)
         has_fresh_one_sided_fill = sold_up or sold_down
+        has_open_free_inventory = state.free_up > 0 or state.free_down > 0
         can_replenish = True
         if self.config.max_free_inventory_per_side > 0:
             can_replenish = (
                 max(state.free_up, state.free_down) < self.config.max_free_inventory_per_side
                 and free_inventory_total < self.config.max_free_inventory_per_side
             )
-        needs_replenish = state.paired_inventory < self.config.min_paired_inventory
-        if can_replenish and needs_replenish and not has_fresh_one_sided_fill:
+        replenish_ceiling = min(self.config.target_pairs, self.config.min_paired_inventory)
+        needs_replenish = state.paired_inventory < replenish_ceiling
+        if can_replenish and needs_replenish and not has_fresh_one_sided_fill and not has_open_free_inventory:
             replenish_target = min(self.config.target_pairs, state.paired_inventory + self.config.replenish_batch_size)
             split_pairs = round(replenish_target - state.paired_inventory, 4)
         if split_pairs > 0:
