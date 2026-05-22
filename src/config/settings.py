@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     pair_mm_skew_step: float = 0.01
     pair_mm_max_skew: float = 3.0
     pair_mm_min_new_skew_edge: float = 0.1
+    pair_mm_max_replenish_cost: float = 0.99
     pair_mm_reward_per_trade_usd: float = 0.0
     pair_mm_reward_bps_per_trade: float = 0.0
     ws_signal_enabled: bool = False

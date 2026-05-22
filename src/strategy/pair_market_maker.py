@@ -19,6 +19,7 @@ class PairMarketMakerConfig:
     max_skew: float
     min_new_skew_edge: float
     reward_per_trade_usd: float
+    max_replenish_cost: float = 1.0
     reward_bps_per_trade: float = 0.0
 
 
@@ -297,6 +298,8 @@ class PairMarketMaker:
                 max(state.free_up, state.free_down) < self.config.max_free_inventory_per_side
                 and free_inventory_total < self.config.max_free_inventory_per_side
             )
+        if pair_ask_sum is None or pair_ask_sum > self.config.max_replenish_cost:
+            can_replenish = False
         replenish_ceiling = min(self.config.target_pairs, self.config.min_paired_inventory)
         needs_replenish = state.paired_inventory < replenish_ceiling
         if can_replenish and needs_replenish and not has_fresh_one_sided_fill and not has_open_free_inventory and not repaired_pairs and not cooldown_active:

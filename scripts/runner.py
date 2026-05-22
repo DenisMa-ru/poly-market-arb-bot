@@ -216,6 +216,7 @@ def _build_pair_mm_runner_for_scan(
             skew_step=pair_mm.config.skew_step,
             max_skew=pair_mm.config.max_skew,
             min_new_skew_edge=pair_mm.config.min_new_skew_edge,
+            max_replenish_cost=pair_mm.config.max_replenish_cost,
             reward_per_trade_usd=pair_mm.config.reward_per_trade_usd,
             reward_bps_per_trade=pair_mm.config.reward_bps_per_trade,
         )
@@ -282,6 +283,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             skew_step=settings.pair_mm_skew_step,
             max_skew=settings.pair_mm_max_skew,
             min_new_skew_edge=settings.pair_mm_min_new_skew_edge,
+            max_replenish_cost=settings.pair_mm_max_replenish_cost,
             reward_per_trade_usd=settings.pair_mm_reward_per_trade_usd,
             reward_bps_per_trade=settings.pair_mm_reward_bps_per_trade,
         )

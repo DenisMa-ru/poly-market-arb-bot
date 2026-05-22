@@ -55,7 +55,7 @@ def test_pair_mm_tracks_skew_mark_pnl_after_one_sided_sale() -> None:
 def test_pair_mm_replenish_is_not_free() -> None:
     mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, min_new_skew_edge=0.0, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=0.0)
-    result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.45, 0.6), state)
+    result = mm.evaluate(_market(), _book(0.4, 0.49), _book(0.4, 0.49), state)
     assert result["split_pairs"] == 1.0
     assert result["split_notional"] == 1.0
     assert result["split_notional_delta"] == 1.0
@@ -78,9 +78,9 @@ def test_pair_mm_does_not_replenish_above_min_threshold() -> None:
 
 
 def test_pair_mm_replenishes_in_batches_only_below_min_threshold() -> None:
-    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=2, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, min_new_skew_edge=0.0, reward_per_trade_usd=0.0))
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=2, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, min_new_skew_edge=0.0, max_replenish_cost=1.0, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=0.0)
-    first = mm.evaluate(_market(), _book(0.1, 0.9), _book(0.1, 0.9), state)
+    first = mm.evaluate(_market(), _book(0.1, 0.49), _book(0.1, 0.49), state)
     assert first["split_pairs"] == 1.0
     assert first["paired_inventory_after"] == 1.0
 
@@ -124,6 +124,22 @@ def test_pair_mm_does_not_replenish_above_target_when_min_exceeds_target() -> No
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.2, 0.8), state)
     assert result["split_pairs"] == 0.0
+    assert result["paired_inventory_after"] == 1.0
+
+
+def test_pair_mm_blocks_replenish_when_pair_is_too_expensive() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=2, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, min_new_skew_edge=0.0, max_replenish_cost=0.99, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=0.0)
+    result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.5, 0.51), state)
+    assert result["split_pairs"] == 0.0
+    assert result["paired_inventory_after"] == 0.0
+
+
+def test_pair_mm_allows_replenish_when_pair_cost_is_cheap_enough() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=2, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, min_new_skew_edge=0.0, max_replenish_cost=0.99, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=0.0)
+    result = mm.evaluate(_market(), _book(0.2, 0.49), _book(0.2, 0.49), state)
+    assert result["split_pairs"] == 1.0
     assert result["paired_inventory_after"] == 1.0
 
 
@@ -223,12 +239,12 @@ def test_pair_mm_delays_replenish_for_one_scan_after_unwind() -> None:
     assert unwind_result["split_pairs"] == 0.0
     assert state.replenish_cooldown_scans == 1
 
-    cooldown_result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.2, 0.8), state, remaining_fill_budget=0)
+    cooldown_result = mm.evaluate(_market(), _book(0.2, 0.49), _book(0.2, 0.49), state, remaining_fill_budget=0)
     assert cooldown_result["split_pairs"] == 0.0
     assert cooldown_result["paired_inventory_after"] == 4.0
     assert state.replenish_cooldown_scans == 0
 
-    next_result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.2, 0.8), state, remaining_fill_budget=0)
+    next_result = mm.evaluate(_market(), _book(0.2, 0.49), _book(0.2, 0.49), state, remaining_fill_budget=0)
     assert next_result["split_pairs"] == 1.0
     assert next_result["paired_inventory_after"] == 5.0
 
