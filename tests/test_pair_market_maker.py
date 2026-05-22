@@ -214,6 +214,25 @@ def test_pair_mm_does_not_replenish_in_same_scan_as_repair() -> None:
     assert result["paired_inventory_after"] == 1.0
 
 
+def test_pair_mm_delays_replenish_for_one_scan_after_unwind() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=5, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, min_new_skew_edge=0.0, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=4.0, free_up=1.0)
+
+    unwind_result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.2, 0.8), state)
+    assert unwind_result["sold_up"] is True
+    assert unwind_result["split_pairs"] == 0.0
+    assert state.replenish_cooldown_scans == 1
+
+    cooldown_result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.2, 0.8), state, remaining_fill_budget=0)
+    assert cooldown_result["split_pairs"] == 0.0
+    assert cooldown_result["paired_inventory_after"] == 4.0
+    assert state.replenish_cooldown_scans == 0
+
+    next_result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.2, 0.8), state, remaining_fill_budget=0)
+    assert next_result["split_pairs"] == 1.0
+    assert next_result["paired_inventory_after"] == 5.0
+
+
 def test_pair_mm_blocks_fresh_skew_when_edge_below_minimum() -> None:
     mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, min_new_skew_edge=0.1, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=1.0)

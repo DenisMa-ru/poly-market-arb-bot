@@ -34,6 +34,7 @@ class PairMarketMakerState:
     reward_pnl: float = 0.0
     completed_pairs: float = 0.0
     split_notional: float = 0.0
+    replenish_cooldown_scans: int = 0
 
 
 class PairMarketMaker:
@@ -124,6 +125,10 @@ class PairMarketMaker:
                 "net_pnl_delta": 0.0,
                 "status": "skipped",
             }
+
+        cooldown_active = state.replenish_cooldown_scans > 0
+        if cooldown_active:
+            state.replenish_cooldown_scans -= 1
 
         size = 1.0
         total_up = state.paired_inventory + state.free_up
@@ -254,6 +259,7 @@ class PairMarketMaker:
             if unwind_size > 0:
                 state.free_up = round(state.free_up - unwind_size, 4)
                 state.realized_pnl = round(state.realized_pnl + up_quote * unwind_size, 4)
+                state.replenish_cooldown_scans = max(state.replenish_cooldown_scans, 1)
             else:
                 state.paired_inventory = round(state.paired_inventory - size, 4)
                 state.free_down = round(state.free_down + size, 4)
@@ -264,6 +270,7 @@ class PairMarketMaker:
             if unwind_size > 0:
                 state.free_down = round(state.free_down - unwind_size, 4)
                 state.realized_pnl = round(state.realized_pnl + down_quote * unwind_size, 4)
+                state.replenish_cooldown_scans = max(state.replenish_cooldown_scans, 1)
             else:
                 state.paired_inventory = round(state.paired_inventory - size, 4)
                 state.free_up = round(state.free_up + size, 4)
@@ -278,6 +285,7 @@ class PairMarketMaker:
             state.paired_inventory = round(state.paired_inventory + repair_size, 4)
             state.completed_pairs = round(state.completed_pairs + repair_size, 4)
             repaired_pairs = True
+            state.replenish_cooldown_scans = max(state.replenish_cooldown_scans, 1)
 
         split_pairs = 0.0
         free_inventory_total = round(state.free_up + state.free_down, 4)
@@ -291,7 +299,7 @@ class PairMarketMaker:
             )
         replenish_ceiling = min(self.config.target_pairs, self.config.min_paired_inventory)
         needs_replenish = state.paired_inventory < replenish_ceiling
-        if can_replenish and needs_replenish and not has_fresh_one_sided_fill and not has_open_free_inventory and not repaired_pairs:
+        if can_replenish and needs_replenish and not has_fresh_one_sided_fill and not has_open_free_inventory and not repaired_pairs and not cooldown_active:
             replenish_target = min(self.config.target_pairs, state.paired_inventory + self.config.replenish_batch_size)
             split_pairs = round(replenish_target - state.paired_inventory, 4)
         if split_pairs > 0:
