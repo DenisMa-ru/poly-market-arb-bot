@@ -51,6 +51,10 @@ class PairMarketMaker:
         total_up_before = paired_before + free_up_before
         total_down_before = paired_before + free_down_before
         skew_before = round(total_up_before - total_down_before, 4)
+        realized_before = state.realized_pnl
+        reward_before = state.reward_pnl
+        completed_pairs_before = state.completed_pairs
+        split_notional_before = state.split_notional
         mark_before = self._mark_value(
             paired_inventory=paired_before,
             free_up=free_up_before,
@@ -85,12 +89,17 @@ class PairMarketMaker:
                 "mark_value_before": mark_before,
                 "mark_value_after": mark_before,
                 "completed_pairs": state.completed_pairs,
+                "completed_pairs_delta": 0.0,
                 "split_notional": state.split_notional,
+                "split_notional_delta": 0.0,
                 "split_pairs": 0.0,
                 "realized_pnl": state.realized_pnl,
+                "realized_pnl_delta": 0.0,
                 "reward_pnl": state.reward_pnl,
+                "reward_pnl_delta": 0.0,
                 "skew_mark_pnl": 0.0,
                 "net_pnl": round(state.realized_pnl + state.reward_pnl, 4),
+                "net_pnl_delta": 0.0,
                 "status": "skipped",
             }
 
@@ -145,12 +154,17 @@ class PairMarketMaker:
                 "mark_value_before": mark_before,
                 "mark_value_after": mark_after,
                 "completed_pairs": state.completed_pairs,
+                "completed_pairs_delta": round(state.completed_pairs - completed_pairs_before, 4),
                 "split_notional": state.split_notional,
+                "split_notional_delta": round(state.split_notional - split_notional_before, 4),
                 "split_pairs": 0.0,
                 "realized_pnl": state.realized_pnl,
+                "realized_pnl_delta": round(state.realized_pnl - realized_before, 4),
                 "reward_pnl": state.reward_pnl,
+                "reward_pnl_delta": round(state.reward_pnl - reward_before, 4),
                 "skew_mark_pnl": round(mark_after - mark_before, 4),
                 "net_pnl": round(state.realized_pnl + state.reward_pnl + (mark_after - mark_before), 4),
+                "net_pnl_delta": round((state.realized_pnl - realized_before) + (state.reward_pnl - reward_before) + (mark_after - mark_before), 4),
                 "status": "pair_completed",
             }
 
@@ -191,6 +205,11 @@ class PairMarketMaker:
         total_up_after = state.paired_inventory + state.free_up
         total_down_after = state.paired_inventory + state.free_down
         skew_mark_pnl = round(mark_after - mark_before, 4)
+        realized_delta = round(state.realized_pnl - realized_before, 4)
+        reward_delta = round(state.reward_pnl - reward_before, 4)
+        completed_pairs_delta = round(state.completed_pairs - completed_pairs_before, 4)
+        split_notional_delta = round(state.split_notional - split_notional_before, 4)
+        net_pnl_delta = round(realized_delta + reward_delta + skew_mark_pnl, 4)
 
         return {
             "slug": market.slug,
@@ -221,11 +240,16 @@ class PairMarketMaker:
             "mark_value_before": mark_before,
             "mark_value_after": mark_after,
             "completed_pairs": state.completed_pairs,
+            "completed_pairs_delta": completed_pairs_delta,
             "split_notional": state.split_notional,
+            "split_notional_delta": split_notional_delta,
             "split_pairs": split_pairs,
             "realized_pnl": state.realized_pnl,
+            "realized_pnl_delta": realized_delta,
             "reward_pnl": state.reward_pnl,
+            "reward_pnl_delta": reward_delta,
             "skew_mark_pnl": skew_mark_pnl,
             "net_pnl": round(state.realized_pnl + state.reward_pnl + skew_mark_pnl, 4),
+            "net_pnl_delta": net_pnl_delta,
             "status": "quoted_pair_mm",
         }

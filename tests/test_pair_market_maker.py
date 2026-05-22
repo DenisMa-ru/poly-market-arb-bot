@@ -31,6 +31,7 @@ def test_pair_mm_sells_inventory_and_collects_reward() -> None:
     assert state.reward_pnl >= 0.02
     assert result["split_pairs"] >= 1.0
     assert state.realized_pnl <= 0.02
+    assert result["reward_pnl_delta"] >= 0.02
 
 
 def test_pair_mm_completes_pair_when_pair_bid_above_par() -> None:
@@ -39,6 +40,7 @@ def test_pair_mm_completes_pair_when_pair_bid_above_par() -> None:
     result = mm.evaluate(_market(), _book(0.51, 0.52), _book(0.51, 0.52), state)
     assert result["pair_bid_sum"] == 1.02
     assert state.completed_pairs >= 1.0
+    assert result["completed_pairs_delta"] == 1.0
 
 
 def test_pair_mm_tracks_skew_mark_pnl_after_one_sided_sale() -> None:
@@ -56,5 +58,6 @@ def test_pair_mm_replenish_is_not_free() -> None:
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.45, 0.6), state)
     assert result["split_pairs"] == 1.0
     assert result["split_notional"] == 1.0
+    assert result["split_notional_delta"] == 1.0
     assert state.split_notional == 1.0
     assert result["realized_pnl"] < 0.0
