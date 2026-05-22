@@ -209,7 +209,7 @@ class PairMarketMaker:
             and up_fill_edge is not None
             and up_fill_edge <= FILL_BUFFER
             and up_skew < self.config.max_skew
-            and (state.paired_inventory > 0 or state.free_up > 0)
+            and (state.paired_inventory > 0 or state.free_up > 0 or (pair_ask_sum is not None and pair_ask_sum <= self.config.max_replenish_cost))
             and state.free_down <= 0
         )
         sold_down_candidate = (
@@ -218,7 +218,7 @@ class PairMarketMaker:
             and down_fill_edge is not None
             and down_fill_edge <= FILL_BUFFER
             and down_skew < self.config.max_skew
-            and (state.paired_inventory > 0 or state.free_down > 0)
+            and (state.paired_inventory > 0 or state.free_down > 0 or (pair_ask_sum is not None and pair_ask_sum <= self.config.max_replenish_cost))
             and state.free_up <= 0
         )
 
