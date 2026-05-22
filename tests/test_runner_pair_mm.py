@@ -73,9 +73,15 @@ def test_replenish_budget_exhaustion_disables_scan_replenish() -> None:
 def test_pair_mm_summary_counts_min_new_skew_blocks() -> None:
     summary = _summarize_pair_mm_rows(
         [
-            {"status": "blocked_min_new_skew_edge", "sold_up": False, "sold_down": False},
-            {"status": "quoted_pair_mm", "sold_up": False, "sold_down": False},
+            {"status": "blocked_min_new_skew_edge", "sold_up": False, "sold_down": False, "opened_new_skew": False, "unwound_free_inventory": False, "repair_size": 0.0, "split_pairs": 0.0, "replenish_cost": 0.0},
+            {"status": "quoted_pair_mm", "sold_up": False, "sold_down": False, "opened_new_skew": True, "unwound_free_inventory": True, "repair_size": 1.0, "split_pairs": 1.0, "replenish_cost": 0.98},
         ]
     )
 
     assert summary["blocked_min_new_skew_edge"] == 1
+    assert summary["opened_new_skew_count"] == 1
+    assert summary["unwind_count"] == 1
+    assert summary["repaired_pairs"] == 1.0
+    assert summary["replenish_count"] == 1
+    assert summary["replenish_notional_cost"] == 0.98
+    assert summary["avg_replenish_cost_per_pair"] == 0.98

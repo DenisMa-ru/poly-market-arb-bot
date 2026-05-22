@@ -97,6 +97,11 @@ def _summarize_pair_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
     sold_up = sum(1 for row in rows if row.get("sold_up"))
     sold_down = sum(1 for row in rows if row.get("sold_down"))
     blocked_min_new_skew_edge = sum(1 for row in rows if row.get("status") == "blocked_min_new_skew_edge")
+    opened_new_skew_count = sum(1 for row in rows if row.get("opened_new_skew"))
+    unwind_count = sum(1 for row in rows if row.get("unwound_free_inventory"))
+    repaired_pairs = round(sum(float(row.get("repair_size", 0.0)) for row in rows), 4)
+    replenish_count = sum(1 for row in rows if float(row.get("split_pairs", 0.0)) > 0.0)
+    replenish_notional_cost = round(sum(float(row.get("replenish_cost", 0.0)) for row in rows), 4)
     completed_pairs = round(sum(float(row.get("completed_pairs_delta", 0.0)) for row in rows), 4)
     split_notional = round(sum(float(row.get("split_notional_delta", 0.0)) for row in rows), 4)
     split_pairs = round(sum(float(row.get("split_pairs", 0.0)) for row in rows), 4)
@@ -117,6 +122,12 @@ def _summarize_pair_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
         "sold_up": sold_up,
         "sold_down": sold_down,
         "blocked_min_new_skew_edge": blocked_min_new_skew_edge,
+        "opened_new_skew_count": opened_new_skew_count,
+        "unwind_count": unwind_count,
+        "repaired_pairs": repaired_pairs,
+        "replenish_count": replenish_count,
+        "replenish_notional_cost": replenish_notional_cost,
+        "avg_replenish_cost_per_pair": round(replenish_notional_cost / replenish_count, 4) if replenish_count > 0 else None,
         "completed_pairs": completed_pairs,
         "split_pairs": split_pairs,
         "split_notional": split_notional,

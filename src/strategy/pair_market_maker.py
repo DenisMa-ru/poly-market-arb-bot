@@ -248,6 +248,8 @@ class PairMarketMaker:
             sold_down = False
 
         blocked_new_skew_side = ""
+        opened_new_skew = False
+        unwound_free_inventory = False
         if sold_up and state.free_up <= 0 and up_quote - 0.5 < self.config.min_new_skew_edge:
             sold_up = False
             blocked_new_skew_side = "up"
@@ -258,10 +260,12 @@ class PairMarketMaker:
         if sold_up:
             unwind_size = min(size, state.free_up)
             if unwind_size > 0:
+                unwound_free_inventory = True
                 state.free_up = round(state.free_up - unwind_size, 4)
                 state.realized_pnl = round(state.realized_pnl + up_quote * unwind_size, 4)
                 state.replenish_cooldown_scans = max(state.replenish_cooldown_scans, 1)
             else:
+                opened_new_skew = True
                 state.paired_inventory = round(state.paired_inventory - size, 4)
                 state.free_down = round(state.free_down + size, 4)
                 state.realized_pnl = round(state.realized_pnl + (up_quote - 0.5), 4)
@@ -269,10 +273,12 @@ class PairMarketMaker:
         if sold_down:
             unwind_size = min(size, state.free_down)
             if unwind_size > 0:
+                unwound_free_inventory = True
                 state.free_down = round(state.free_down - unwind_size, 4)
                 state.realized_pnl = round(state.realized_pnl + down_quote * unwind_size, 4)
                 state.replenish_cooldown_scans = max(state.replenish_cooldown_scans, 1)
             else:
+                opened_new_skew = True
                 state.paired_inventory = round(state.paired_inventory - size, 4)
                 state.free_up = round(state.free_up + size, 4)
                 state.realized_pnl = round(state.realized_pnl + (down_quote - 0.5), 4)
@@ -309,6 +315,9 @@ class PairMarketMaker:
             state.paired_inventory = round(state.paired_inventory + split_pairs, 4)
             state.split_notional = round(state.split_notional + split_pairs, 4)
             state.realized_pnl = round(state.realized_pnl - split_pairs, 4)
+        replenish_cost = 0.0
+        if split_pairs > 0 and pair_ask_sum is not None:
+            replenish_cost = round(split_pairs * pair_ask_sum, 4)
 
         mark_after = self._mark_value(
             paired_inventory=state.paired_inventory,
@@ -341,6 +350,9 @@ class PairMarketMaker:
             "up_quote": up_quote,
             "down_quote": down_quote,
             "blocked_new_skew_side": blocked_new_skew_side,
+            "opened_new_skew": opened_new_skew,
+            "unwound_free_inventory": unwound_free_inventory,
+            "repair_size": repair_size,
             "sold_up": sold_up,
             "sold_down": sold_down,
             "pair_bid_sum": pair_bid_sum,
@@ -364,6 +376,7 @@ class PairMarketMaker:
             "split_notional": state.split_notional,
             "split_notional_delta": split_notional_delta,
             "split_pairs": split_pairs,
+            "replenish_cost": replenish_cost,
             "realized_pnl": state.realized_pnl,
             "realized_pnl_delta": realized_delta,
             "reward_pnl": state.reward_pnl,

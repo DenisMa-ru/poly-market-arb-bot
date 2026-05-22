@@ -208,6 +208,8 @@ def test_pair_mm_adds_reward_bps_on_trade_notional() -> None:
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.2, 0.8), state)
     assert result["sold_up"] is True
     assert result["reward_pnl_delta"] == 0.001
+    assert result["opened_new_skew"] is True
+    assert result["unwound_free_inventory"] is False
 
 
 def test_pair_mm_counts_repaired_free_inventory_as_completed_pairs() -> None:
@@ -219,6 +221,7 @@ def test_pair_mm_counts_repaired_free_inventory_as_completed_pairs() -> None:
     assert result["free_up_after"] == 0.0
     assert result["free_down_after"] == 0.0
     assert result["realized_pnl_delta"] == 0.0
+    assert result["repair_size"] == 1.0
 
 
 def test_pair_mm_does_not_replenish_in_same_scan_as_repair() -> None:
@@ -238,6 +241,7 @@ def test_pair_mm_delays_replenish_for_one_scan_after_unwind() -> None:
     assert unwind_result["sold_up"] is True
     assert unwind_result["split_pairs"] == 0.0
     assert state.replenish_cooldown_scans == 1
+    assert unwind_result["unwound_free_inventory"] is True
 
     cooldown_result = mm.evaluate(_market(), _book(0.2, 0.49), _book(0.2, 0.49), state, remaining_fill_budget=0)
     assert cooldown_result["split_pairs"] == 0.0
@@ -247,6 +251,7 @@ def test_pair_mm_delays_replenish_for_one_scan_after_unwind() -> None:
     next_result = mm.evaluate(_market(), _book(0.2, 0.49), _book(0.2, 0.49), state, remaining_fill_budget=0)
     assert next_result["split_pairs"] == 1.0
     assert next_result["paired_inventory_after"] == 5.0
+    assert next_result["replenish_cost"] == 0.98
 
 
 def test_pair_mm_blocks_fresh_skew_when_edge_below_minimum() -> None:
