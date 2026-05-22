@@ -44,6 +44,8 @@ mm_ws_events = _event_df(db.recent_mm_ws_events(limit=100))
 mm_ws_results = _event_df(db.recent_mm_ws_results(limit=200))
 ws_signal_events = _event_df(db.recent_ws_signal_events(limit=100))
 ws_signal_results = _event_df(db.recent_ws_signal_results(limit=200))
+pair_mm_events = _event_df(db.recent_pair_mm_events(limit=100))
+pair_mm_results = _event_df(db.recent_pair_mm_results(limit=200))
 
 balance = db.latest_balance()
 open_exposure = db.open_exposure_usd()
@@ -57,6 +59,7 @@ latest_preorder = preorder_events.iloc[0] if not preorder_events.empty else None
 latest_mm = mm_events.iloc[0] if not mm_events.empty else None
 latest_mm_ws = mm_ws_events.iloc[0] if not mm_ws_events.empty else None
 latest_ws_signal = ws_signal_events.iloc[0] if not ws_signal_events.empty else None
+latest_pair_mm = pair_mm_events.iloc[0] if not pair_mm_events.empty else None
 
 top1, top2, top3, top4, top5 = st.columns(5)
 top1.metric("Paper balance", f"${balance:,.2f}" if balance is not None else "—")
@@ -128,6 +131,19 @@ if latest_ws_signal is not None and "summary" in latest_ws_signal:
     s5.metric("WS messages", int(summary.get("messages", 0)))
     s6.metric("Avg PnL", f"${float(summary.get('avg_pnl', 0.0)):.3f}")
     s7.metric("Total PnL", f"${float(summary.get('total_pnl', 0.0)):.3f}")
+
+if latest_pair_mm is not None and "summary" in latest_pair_mm:
+    summary = latest_pair_mm["summary"] if isinstance(latest_pair_mm["summary"], dict) else {}
+    st.subheader("Pair market making paper strategy")
+    p1, p2, p3, p4 = st.columns(4)
+    p1.metric("Markets", int(summary.get("markets", 0)))
+    p2.metric("Sold UP", int(summary.get("sold_up", 0)))
+    p3.metric("Sold DOWN", int(summary.get("sold_down", 0)))
+    p4.metric("Completed pairs", f"{float(summary.get('completed_pairs', 0.0)):.1f}")
+    p5, p6, p7 = st.columns(3)
+    p5.metric("Realized PnL", f"${float(summary.get('realized_pnl', 0.0)):.3f}")
+    p6.metric("Reward PnL", f"${float(summary.get('reward_pnl', 0.0)):.3f}")
+    p7.metric("Net PnL", f"${float(summary.get('net_pnl', 0.0)):.3f}")
 
 left, right = st.columns((1.2, 1.8))
 

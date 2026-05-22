@@ -14,6 +14,9 @@ class MarketMakerConfig:
     reprice_threshold_bps: float
     max_inventory_per_market: float
     markets_limit: int
+    reward_per_fill_usd: float = 0.0
+    reward_only_mode: bool = False
+    max_unrealized_loss_usd: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,7 @@ class Quote:
     skew_bps: float
     inventory_regime: str
     exit_pressure: float
+    quote_allowed: bool
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,7 @@ class MarketMakerState:
     quote_updates: int = 0
     fill_count: int = 0
     realized_pnl: float = 0.0
+    reward_pnl: float = 0.0
 
 
 class MarketMaker:
@@ -91,6 +96,10 @@ class MarketMaker:
         ask = min(0.99, mid + spread / 2.0 - mid * (ask_skew_bps / 10_000.0))
         bid = round(bid, 2)
         ask = round(max(ask, bid + 0.01), 2)
+        quote_allowed = True
+        if self.config.reward_only_mode and inventory > 0 and self.config.max_unrealized_loss_usd > 0:
+            mark_loss = max(0.0, (mid - best_bid) * inventory)
+            quote_allowed = mark_loss <= self.config.max_unrealized_loss_usd
         return Quote(
             bid=bid,
             ask=ask,
@@ -100,6 +109,7 @@ class MarketMaker:
             skew_bps=round(ask_skew_bps, 2),
             inventory_regime=inventory_regime,
             exit_pressure=exit_pressure,
+            quote_allowed=quote_allowed,
         )
 
     def evaluate(
@@ -132,6 +142,26 @@ class MarketMaker:
                 replaces=0,
                 status="skipped",
             )
+        if not quote.quote_allowed:
+            return MarketMakerFillResult(
+                slug=market.slug,
+                symbol=market.symbol,
+                timeframe_minutes=market.timeframe_minutes,
+                bid=quote.bid,
+                ask=quote.ask,
+                best_bid=best_bid,
+                best_ask=best_ask,
+                filled_bid=False,
+                filled_ask=False,
+                inventory_before=inventory_before,
+                inventory_after=state.inventory,
+                quote_mid=quote.mid,
+                spread_capture=0.0,
+                unrealized_pnl=round(((best_bid if best_bid is not None else quote.mid) - state.avg_entry_price) * state.inventory, 4) if state.inventory > 0 else 0.0,
+                realized_pnl=state.realized_pnl,
+                replaces=0,
+                status="risk_blocked",
+            )
 
         replaces = 0
         if state.active_bid is not None and abs(state.active_bid - quote.bid) >= 0.01:
@@ -152,6 +182,7 @@ class MarketMaker:
             state.inventory = new_inventory
             state.avg_entry_price = total_cost / new_inventory if new_inventory > 0 else 0.0
             state.fill_count += 1
+            state.reward_pnl = round(state.reward_pnl + self.config.reward_per_fill_usd, 4)
         if filled_ask:
             sell_size = min(quote.size, state.inventory)
             spread_capture = round((quote.ask - state.avg_entry_price) * sell_size, 4)
@@ -161,6 +192,7 @@ class MarketMaker:
                 state.inventory = 0.0
                 state.avg_entry_price = 0.0
             state.fill_count += 1
+            state.reward_pnl = round(state.reward_pnl + self.config.reward_per_fill_usd, 4)
 
         mark_price = best_bid if state.inventory > 0 and best_bid is not None else quote.mid
         unrealized_pnl = round((mark_price - state.avg_entry_price) * state.inventory, 4) if state.inventory > 0 else 0.0

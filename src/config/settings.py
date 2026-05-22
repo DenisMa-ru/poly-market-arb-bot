@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     mm_ws_enabled: bool = False
     mm_ws_runtime_seconds: int = 15
     mm_ws_max_messages: int = 200
+    mm_reward_per_fill_usd: float = 0.0
+    mm_reward_only_mode: bool = False
+    mm_max_unrealized_loss_usd: float = 0.0
+    pair_mm_enabled: bool = False
+    pair_mm_markets_limit: int = 5
+    pair_mm_target_pairs: float = 5.0
+    pair_mm_quote_edge: float = 0.01
+    pair_mm_skew_step: float = 0.01
+    pair_mm_max_skew: float = 3.0
+    pair_mm_reward_per_trade_usd: float = 0.0
     ws_signal_enabled: bool = False
     ws_signal_runtime_seconds: int = 5
     ws_signal_max_messages: int = 100

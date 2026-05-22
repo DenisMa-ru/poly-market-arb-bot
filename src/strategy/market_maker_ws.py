@@ -158,6 +158,7 @@ class WsMarketMakerRunner:
                             "filled_bid": False,
                             "filled_ask": False,
                             "spread_capture": 0.0,
+                            "reward_pnl": state.reward_pnl,
                             "unrealized_pnl": 0.0,
                             "realized_pnl": state.realized_pnl,
                             "bid_to_best_ask": None if best_ask is None else round(best_ask - quote.bid, 4),
@@ -205,6 +206,7 @@ class WsMarketMakerRunner:
                                 state.inventory = new_inventory
                                 state.avg_entry_price = total_cost / new_inventory if new_inventory > 0 else 0.0
                                 state.bid_filled = True
+                                state.reward_pnl = round(state.reward_pnl + self.mm.config.reward_per_fill_usd, 4)
                                 metrics["execution_bid_count"] += 1
                             if filled_ask:
                                 spread_capture = round((float(current["ask"]) - state.avg_entry_price) * sell_size, 4)
@@ -214,6 +216,7 @@ class WsMarketMakerRunner:
                                     state.inventory = 0.0
                                     state.avg_entry_price = 0.0
                                 state.ask_filled = True
+                                state.reward_pnl = round(state.reward_pnl + self.mm.config.reward_per_fill_usd, 4)
                                 metrics["execution_ask_count"] += 1
                                 metrics["inventory_reduction_events"] += 1
                             if bid_to_best_ask is not None:
@@ -233,6 +236,7 @@ class WsMarketMakerRunner:
                                     "filled_bid": bool(current.get("filled_bid")) or filled_bid,
                                     "filled_ask": bool(current.get("filled_ask")) or filled_ask,
                                     "spread_capture": round(float(current.get("spread_capture", 0.0)) + spread_capture, 4),
+                                    "reward_pnl": state.reward_pnl,
                                     "unrealized_pnl": unrealized,
                                     "realized_pnl": state.realized_pnl,
                                     "bid_to_best_ask": bid_to_best_ask,
@@ -257,7 +261,12 @@ class WsMarketMakerRunner:
             "bid_fills": sum(1 for row in rows if row.get("filled_bid")),
             "ask_fills": sum(1 for row in rows if row.get("filled_ask")),
             "realized_spread_capture": round(sum(float(row.get("spread_capture", 0.0)) for row in rows), 4),
+            "reward_pnl": round(sum(float(row.get("reward_pnl", 0.0)) for row in rows), 4),
             "unrealized_pnl": round(sum(float(row.get("unrealized_pnl", 0.0)) for row in rows), 4),
+            "net_pnl_with_rewards": round(
+                sum(float(row.get("spread_capture", 0.0)) + float(row.get("reward_pnl", 0.0)) + float(row.get("unrealized_pnl", 0.0)) for row in rows),
+                4,
+            ),
             "net_inventory": round(sum(float(row.get("inventory_after", 0.0)) for row in rows), 4),
             "avg_bid_to_best_ask": round(sum(metrics["bid_to_best_ask"]) / len(metrics["bid_to_best_ask"]), 4) if metrics["bid_to_best_ask"] else 0.0,
             "avg_ask_to_best_bid": round(sum(metrics["ask_to_best_bid"]) / len(metrics["ask_to_best_bid"]), 4) if metrics["ask_to_best_bid"] else 0.0,

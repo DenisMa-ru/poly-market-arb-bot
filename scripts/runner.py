@@ -19,6 +19,7 @@ from src.execution.settlement import SettlementEngine
 from src.markets.updown_discovery import discover_updown_markets
 from src.markets.updown_parser import UpDownMarket
 from src.storage.db import Database
+from src.strategy.pair_market_maker import PairMarketMaker, PairMarketMakerConfig, PairMarketMakerState
 from src.strategy.market_maker import MarketMaker, MarketMakerConfig, MarketMakerState
 from src.strategy.market_maker_ws import WsMarketMakerRunner
 from src.strategy.preorder import PreOrderConfig, PreOrderSimulator
@@ -92,6 +93,24 @@ def _summarize_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def _summarize_pair_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
+    sold_up = sum(1 for row in rows if row.get("sold_up"))
+    sold_down = sum(1 for row in rows if row.get("sold_down"))
+    completed_pairs = round(sum(float(row.get("completed_pairs", 0.0)) for row in rows), 4)
+    realized_pnl = round(sum(float(row.get("realized_pnl", 0.0)) for row in rows), 4)
+    reward_pnl = round(sum(float(row.get("reward_pnl", 0.0)) for row in rows), 4)
+    net_pnl = round(sum(float(row.get("net_pnl", 0.0)) for row in rows), 4)
+    return {
+        "markets": len(rows),
+        "sold_up": sold_up,
+        "sold_down": sold_down,
+        "completed_pairs": completed_pairs,
+        "realized_pnl": realized_pnl,
+        "reward_pnl": reward_pnl,
+        "net_pnl": net_pnl,
+    }
+
+
 def build_client() -> PolymarketClient:
     settings = get_settings()
     settings.assert_polymarket_ready()
@@ -113,6 +132,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     preorder_results: list[dict[str, object]] = []
     mm_results: list[dict[str, object]] = []
     mm_ws_results: list[dict[str, object]] = []
+    pair_mm_results: list[dict[str, object]] = []
     preorder = PreOrderSimulator(
         PreOrderConfig(
             enabled=settings.preorder_enabled,
@@ -130,10 +150,26 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             reprice_threshold_bps=settings.mm_reprice_threshold_bps,
             max_inventory_per_market=settings.mm_max_inventory_per_market,
             markets_limit=settings.mm_markets_limit,
+            reward_per_fill_usd=settings.mm_reward_per_fill_usd,
+            reward_only_mode=settings.mm_reward_only_mode,
+            max_unrealized_loss_usd=settings.mm_max_unrealized_loss_usd,
         )
     )
     mm_states: dict[str, MarketMakerState] = getattr(scan_once, "_mm_states", {})
     setattr(scan_once, "_mm_states", mm_states)
+    pair_mm = PairMarketMaker(
+        PairMarketMakerConfig(
+            enabled=settings.pair_mm_enabled,
+            markets_limit=settings.pair_mm_markets_limit,
+            target_pairs=settings.pair_mm_target_pairs,
+            quote_edge=settings.pair_mm_quote_edge,
+            skew_step=settings.pair_mm_skew_step,
+            max_skew=settings.pair_mm_max_skew,
+            reward_per_trade_usd=settings.pair_mm_reward_per_trade_usd,
+        )
+    )
+    pair_mm_states: dict[str, PairMarketMakerState] = getattr(scan_once, "_pair_mm_states", {})
+    setattr(scan_once, "_pair_mm_states", pair_mm_states)
     if filtered:
         logger.info(
             "discovered updown markets",
@@ -176,6 +212,10 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 state = mm_states.setdefault(market.slug, MarketMakerState())
                 mm_result = mm.evaluate(market, yes_book, state)
                 mm_results.append(mm_result.__dict__)
+            if settings.pair_mm_enabled and len(pair_mm_results) < settings.pair_mm_markets_limit:
+                pair_state = pair_mm_states.setdefault(market.slug, PairMarketMakerState())
+                pair_mm_result = pair_mm.evaluate(market, yes_book, no_book, pair_state)
+                pair_mm_results.append(pair_mm_result)
             opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:
                 if logged_no_opportunity < 5:
@@ -341,6 +381,10 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
         except Exception as exc:
             logger.warning("ws signal failed", extra={"err": str(exc)})
             db.insert_event("WARNING", "ws signal failed", {"err": str(exc)})
+    if settings.pair_mm_enabled:
+        pair_mm_summary = _summarize_pair_mm_rows(pair_mm_results)
+        db.insert_event("INFO", "pair mm telemetry", {"summary": pair_mm_summary, "results": pair_mm_results[:20]})
+        logger.info("pair mm summary", extra=pair_mm_summary)
     return stats
 
 
