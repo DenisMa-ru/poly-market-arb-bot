@@ -37,6 +37,8 @@ class WsMarketMakerSummary:
     near_touch_ask_count: int
     crossed_bid_count: int
     crossed_ask_count: int
+    execution_bid_count: int
+    execution_ask_count: int
 
 
 class WsMarketMakerRunner:
@@ -73,6 +75,8 @@ class WsMarketMakerRunner:
                 "near_touch_ask_count": 0,
                 "crossed_bid_count": 0,
                 "crossed_ask_count": 0,
+                "execution_bid_count": 0,
+                "execution_ask_count": 0,
             }, []
 
         results: dict[str, dict[str, object]] = {}
@@ -84,6 +88,8 @@ class WsMarketMakerRunner:
             "near_touch_ask_count": 0,
             "crossed_bid_count": 0,
             "crossed_ask_count": 0,
+            "execution_bid_count": 0,
+            "execution_ask_count": 0,
         }
         started = time.time()
 
@@ -186,6 +192,7 @@ class WsMarketMakerRunner:
                                 state.inventory = new_inventory
                                 state.avg_entry_price = total_cost / new_inventory if new_inventory > 0 else 0.0
                                 state.bid_filled = True
+                                metrics["execution_bid_count"] += 1
                             if filled_ask:
                                 spread_capture = round((float(current["ask"]) - state.avg_entry_price) * sell_size, 4)
                                 state.realized_pnl = round(state.realized_pnl + spread_capture, 4)
@@ -194,6 +201,7 @@ class WsMarketMakerRunner:
                                     state.inventory = 0.0
                                     state.avg_entry_price = 0.0
                                 state.ask_filled = True
+                                metrics["execution_ask_count"] += 1
                             if bid_to_best_ask is not None:
                                 metrics["bid_to_best_ask"].append(bid_to_best_ask)
                             if ask_to_best_bid is not None:
@@ -241,5 +249,7 @@ class WsMarketMakerRunner:
             "near_touch_ask_count": metrics["near_touch_ask_count"],
             "crossed_bid_count": metrics["crossed_bid_count"],
             "crossed_ask_count": metrics["crossed_ask_count"],
+            "execution_bid_count": metrics["execution_bid_count"],
+            "execution_ask_count": metrics["execution_ask_count"],
         }
         return summary, rows[:20]
