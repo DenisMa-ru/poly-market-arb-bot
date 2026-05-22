@@ -29,7 +29,8 @@ def test_pair_mm_sells_inventory_and_collects_reward() -> None:
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.5, 0.51), state)
     assert result["sold_up"] or result["sold_down"]
     assert state.reward_pnl >= 0.02
-    assert result["paired_inventory_after"] <= result["paired_inventory_before"]
+    assert result["split_pairs"] >= 1.0
+    assert state.realized_pnl <= 0.02
 
 
 def test_pair_mm_completes_pair_when_pair_bid_above_par() -> None:
@@ -47,3 +48,13 @@ def test_pair_mm_tracks_skew_mark_pnl_after_one_sided_sale() -> None:
     assert result["sold_up"]
     assert result["free_down_after"] >= 1.0
     assert result["skew_mark_pnl"] != 0.0
+
+
+def test_pair_mm_replenish_is_not_free() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=1.0)
+    result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.45, 0.6), state)
+    assert result["split_pairs"] == 1.0
+    assert result["split_notional"] == 1.0
+    assert state.split_notional == 1.0
+    assert result["realized_pnl"] < 0.0

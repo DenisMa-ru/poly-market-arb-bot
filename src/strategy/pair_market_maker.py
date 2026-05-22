@@ -25,6 +25,7 @@ class PairMarketMakerState:
     realized_pnl: float = 0.0
     reward_pnl: float = 0.0
     completed_pairs: float = 0.0
+    split_notional: float = 0.0
 
 
 class PairMarketMaker:
@@ -84,6 +85,8 @@ class PairMarketMaker:
                 "mark_value_before": mark_before,
                 "mark_value_after": mark_before,
                 "completed_pairs": state.completed_pairs,
+                "split_notional": state.split_notional,
+                "split_pairs": 0.0,
                 "realized_pnl": state.realized_pnl,
                 "reward_pnl": state.reward_pnl,
                 "skew_mark_pnl": 0.0,
@@ -142,6 +145,8 @@ class PairMarketMaker:
                 "mark_value_before": mark_before,
                 "mark_value_after": mark_after,
                 "completed_pairs": state.completed_pairs,
+                "split_notional": state.split_notional,
+                "split_pairs": 0.0,
                 "realized_pnl": state.realized_pnl,
                 "reward_pnl": state.reward_pnl,
                 "skew_mark_pnl": round(mark_after - mark_before, 4),
@@ -169,9 +174,12 @@ class PairMarketMaker:
             state.free_down = round(state.free_down - repair_size, 4)
             state.paired_inventory = round(state.paired_inventory + repair_size, 4)
 
+        split_pairs = 0.0
         if state.paired_inventory < self.config.target_pairs:
-            replenish = round(self.config.target_pairs - state.paired_inventory, 4)
-            state.paired_inventory = round(state.paired_inventory + replenish, 4)
+            split_pairs = round(self.config.target_pairs - state.paired_inventory, 4)
+            state.paired_inventory = round(state.paired_inventory + split_pairs, 4)
+            state.split_notional = round(state.split_notional + split_pairs, 4)
+            state.realized_pnl = round(state.realized_pnl - split_pairs, 4)
 
         mark_after = self._mark_value(
             paired_inventory=state.paired_inventory,
@@ -213,6 +221,8 @@ class PairMarketMaker:
             "mark_value_before": mark_before,
             "mark_value_after": mark_after,
             "completed_pairs": state.completed_pairs,
+            "split_notional": state.split_notional,
+            "split_pairs": split_pairs,
             "realized_pnl": state.realized_pnl,
             "reward_pnl": state.reward_pnl,
             "skew_mark_pnl": skew_mark_pnl,

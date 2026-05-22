@@ -97,17 +97,36 @@ def _summarize_pair_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
     sold_up = sum(1 for row in rows if row.get("sold_up"))
     sold_down = sum(1 for row in rows if row.get("sold_down"))
     completed_pairs = round(sum(float(row.get("completed_pairs", 0.0)) for row in rows), 4)
+    split_notional = round(sum(float(row.get("split_notional", 0.0)) for row in rows), 4)
+    split_pairs = round(sum(float(row.get("split_pairs", 0.0)) for row in rows), 4)
     realized_pnl = round(sum(float(row.get("realized_pnl", 0.0)) for row in rows), 4)
     reward_pnl = round(sum(float(row.get("reward_pnl", 0.0)) for row in rows), 4)
+    skew_mark_pnl = round(sum(float(row.get("skew_mark_pnl", 0.0)) for row in rows), 4)
     net_pnl = round(sum(float(row.get("net_pnl", 0.0)) for row in rows), 4)
+    paired_inventory = round(sum(float(row.get("paired_inventory_after", 0.0)) for row in rows), 4)
+    free_up = round(sum(float(row.get("free_up_after", 0.0)) for row in rows), 4)
+    free_down = round(sum(float(row.get("free_down_after", 0.0)) for row in rows), 4)
+    open_skew_markets = sum(1 for row in rows if float(row.get("free_up_after", 0.0)) > 0.0 or float(row.get("free_down_after", 0.0)) > 0.0)
+    status_counts: dict[str, int] = {}
+    for row in rows:
+        status = str(row.get("status", "unknown"))
+        status_counts[status] = status_counts.get(status, 0) + 1
     return {
         "markets": len(rows),
         "sold_up": sold_up,
         "sold_down": sold_down,
         "completed_pairs": completed_pairs,
+        "split_pairs": split_pairs,
+        "split_notional": split_notional,
         "realized_pnl": realized_pnl,
         "reward_pnl": reward_pnl,
+        "skew_mark_pnl": skew_mark_pnl,
         "net_pnl": net_pnl,
+        "paired_inventory": paired_inventory,
+        "free_up": free_up,
+        "free_down": free_down,
+        "open_skew_markets": open_skew_markets,
+        "status_counts": status_counts,
     }
 
 
