@@ -42,6 +42,8 @@ mm_events = _event_df(db.recent_mm_events(limit=100))
 mm_results = _event_df(db.recent_mm_results(limit=200))
 mm_ws_events = _event_df(db.recent_mm_ws_events(limit=100))
 mm_ws_results = _event_df(db.recent_mm_ws_results(limit=200))
+ws_signal_events = _event_df(db.recent_ws_signal_events(limit=100))
+ws_signal_results = _event_df(db.recent_ws_signal_results(limit=200))
 
 balance = db.latest_balance()
 open_exposure = db.open_exposure_usd()
@@ -54,6 +56,7 @@ latest_scan = scan_events.iloc[0] if not scan_events.empty else None
 latest_preorder = preorder_events.iloc[0] if not preorder_events.empty else None
 latest_mm = mm_events.iloc[0] if not mm_events.empty else None
 latest_mm_ws = mm_ws_events.iloc[0] if not mm_ws_events.empty else None
+latest_ws_signal = ws_signal_events.iloc[0] if not ws_signal_events.empty else None
 
 top1, top2, top3, top4, top5 = st.columns(5)
 top1.metric("Paper balance", f"${balance:,.2f}" if balance is not None else "—")
@@ -112,6 +115,19 @@ if latest_mm_ws is not None and "summary" in latest_mm_ws:
     w6.metric("Bid fills", int(summary.get("bid_fills", 0)))
     w7.metric("Ask fills", int(summary.get("ask_fills", 0)))
     w8.metric("Net inventory", f"{float(summary.get('net_inventory', 0.0)):.2f}")
+
+if latest_ws_signal is not None and "summary" in latest_ws_signal:
+    summary = latest_ws_signal["summary"] if isinstance(latest_ws_signal["summary"], dict) else {}
+    st.subheader("WS signal paper strategy")
+    s1, s2, s3, s4 = st.columns(4)
+    s1.metric("Trades", int(summary.get("trades", 0)))
+    s2.metric("Wins", int(summary.get("wins", 0)))
+    s3.metric("Losses", int(summary.get("losses", 0)))
+    s4.metric("Win rate", f"{float(summary.get('win_rate', 0.0)) * 100:.1f}%")
+    s5, s6, s7 = st.columns(3)
+    s5.metric("WS messages", int(summary.get("messages", 0)))
+    s6.metric("Avg PnL", f"${float(summary.get('avg_pnl', 0.0)):.3f}")
+    s7.metric("Total PnL", f"${float(summary.get('total_pnl', 0.0)):.3f}")
 
 left, right = st.columns((1.2, 1.8))
 
@@ -240,6 +256,27 @@ else:
         "inventory_after",
         "spread_capture",
         "unrealized_pnl",
+        "status",
+    ]
+    cols = [col for col in preferred if col in display.columns]
+    st.dataframe(display[cols], use_container_width=True, hide_index=True)
+
+st.subheader("WS signal trades")
+if ws_signal_results.empty:
+    st.info("WS signal telemetry is not enabled or no data yet.")
+else:
+    display = ws_signal_results.copy()
+    preferred = [
+        "created_at",
+        "slug",
+        "symbol",
+        "timeframe_minutes",
+        "entry_price",
+        "exit_price",
+        "pnl",
+        "hold_seconds",
+        "entry_reason",
+        "exit_reason",
         "status",
     ]
     cols = [col for col in preferred if col in display.columns]

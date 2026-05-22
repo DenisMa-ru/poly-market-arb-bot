@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     mm_ws_enabled: bool = False
     mm_ws_runtime_seconds: int = 15
     mm_ws_max_messages: int = 200
+    ws_signal_enabled: bool = False
+    ws_signal_runtime_seconds: int = 5
+    ws_signal_max_messages: int = 100
+    ws_signal_markets_limit: int = 5
+    ws_signal_take_profit: float = 0.01
+    ws_signal_stop_loss: float = 0.01
+    ws_signal_max_hold_seconds: int = 10
     db_path: str = "data/poly_market_arb.db"
     log_level: str = "INFO"
 

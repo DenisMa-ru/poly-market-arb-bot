@@ -22,6 +22,7 @@ from src.storage.db import Database
 from src.strategy.market_maker import MarketMaker, MarketMakerConfig, MarketMakerState
 from src.strategy.market_maker_ws import WsMarketMakerRunner
 from src.strategy.preorder import PreOrderConfig, PreOrderSimulator
+from src.strategy.ws_signal import WsSignalConfig, WsSignalRunner
 from src.utils.logger import get_logger, setup_logging
 
 logger = get_logger("scripts.runner")
@@ -322,6 +323,24 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             except Exception as exc:
                 logger.warning("mm ws failed", extra={"err": str(exc)})
                 db.insert_event("WARNING", "mm ws failed", {"err": str(exc)})
+    if settings.ws_signal_enabled:
+        try:
+            signal_runner = WsSignalRunner(
+                WsSignalConfig(
+                    runtime_seconds=settings.ws_signal_runtime_seconds,
+                    max_messages=settings.ws_signal_max_messages,
+                    markets_limit=settings.ws_signal_markets_limit,
+                    take_profit=settings.ws_signal_take_profit,
+                    stop_loss=settings.ws_signal_stop_loss,
+                    max_hold_seconds=settings.ws_signal_max_hold_seconds,
+                )
+            )
+            signal_summary, signal_results = await signal_runner.run(markets=filtered)
+            db.insert_event("INFO", "ws signal telemetry", {"summary": signal_summary, "results": signal_results})
+            logger.info("ws signal summary", extra=signal_summary)
+        except Exception as exc:
+            logger.warning("ws signal failed", extra={"err": str(exc)})
+            db.insert_event("WARNING", "ws signal failed", {"err": str(exc)})
     return stats
 
 
