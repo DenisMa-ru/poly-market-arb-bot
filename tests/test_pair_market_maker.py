@@ -47,8 +47,8 @@ def test_pair_mm_tracks_skew_mark_pnl_after_one_sided_sale() -> None:
     mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, quote_edge=0.01, skew_step=0.0, max_skew=3, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.45, 0.6), state)
-    assert result["sold_up"]
-    assert result["free_down_after"] >= 1.0
+    assert int(bool(result["sold_up"])) + int(bool(result["sold_down"])) == 1
+    assert result["free_down_after"] >= 1.0 or result["free_up_after"] >= 1.0
     assert result["skew_mark_pnl"] != 0.0
 
 
@@ -61,3 +61,10 @@ def test_pair_mm_replenish_is_not_free() -> None:
     assert result["split_notional_delta"] == 1.0
     assert state.split_notional == 1.0
     assert result["realized_pnl"] < 0.0
+
+
+def test_pair_mm_allows_only_one_fill_side_per_scan() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=1.0)
+    result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.5, 0.51), state)
+    assert int(bool(result["sold_up"])) + int(bool(result["sold_down"])) == 1

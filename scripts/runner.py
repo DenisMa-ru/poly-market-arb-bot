@@ -144,6 +144,8 @@ def build_client() -> PolymarketClient:
 
 async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageAnalyzer, executor: Executor) -> ScanStats:
     settings = get_settings()
+    mm_enabled = settings.mm_enabled and not settings.pair_mm_enabled
+    mm_ws_enabled = mm_enabled and settings.mm_ws_enabled
     filtered = await discover_updown_markets(client, settings.normalized_symbols())
     stats = ScanStats(discovered=len(filtered))
     logged_no_opportunity = 0
@@ -227,7 +229,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             if settings.preorder_enabled:
                 preorder_result = preorder.evaluate(market, yes_book, no_book)
                 preorder_results.append(preorder_result.__dict__)
-            if settings.mm_enabled and len(mm_results) < settings.mm_markets_limit:
+            if mm_enabled and len(mm_results) < settings.mm_markets_limit:
                 state = mm_states.setdefault(market.slug, MarketMakerState())
                 mm_result = mm.evaluate(market, yes_book, state)
                 mm_results.append(mm_result.__dict__)
@@ -356,11 +358,11 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             },
         )
         logger.info("preorder summary", extra=summary)
-    if settings.mm_enabled:
+    if mm_enabled:
         mm_summary = _summarize_mm_rows(mm_results)
         db.insert_event("INFO", "mm telemetry", {"summary": mm_summary, "results": mm_results[:20]})
         logger.info("mm summary", extra=mm_summary)
-        if settings.mm_ws_enabled:
+        if mm_ws_enabled:
             logger.info(
                 "mm ws start",
                 extra={

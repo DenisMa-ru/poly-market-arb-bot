@@ -168,15 +168,35 @@ class PairMarketMaker:
                 "status": "pair_completed",
             }
 
-        sold_up = up_ask is not None and up_quote <= up_ask and up_skew < self.config.max_skew
-        sold_down = down_ask is not None and down_quote <= down_ask and down_skew < self.config.max_skew
+        sold_up_candidate = up_ask is not None and up_quote <= up_ask and up_skew < self.config.max_skew and state.paired_inventory > 0
+        sold_down_candidate = down_ask is not None and down_quote <= down_ask and down_skew < self.config.max_skew and state.paired_inventory > 0
 
-        if sold_up and state.paired_inventory > 0:
+        sold_up = False
+        sold_down = False
+        if sold_up_candidate and sold_down_candidate:
+            up_edge = round(up_ask - up_quote, 4) if up_ask is not None else -1.0
+            down_edge = round(down_ask - down_quote, 4) if down_ask is not None else -1.0
+            if up_edge > down_edge:
+                sold_up = True
+            elif down_edge > up_edge:
+                sold_down = True
+            elif up_skew < down_skew:
+                sold_up = True
+            elif down_skew < up_skew:
+                sold_down = True
+            else:
+                sold_up = up_quote >= down_quote
+                sold_down = not sold_up
+        else:
+            sold_up = sold_up_candidate
+            sold_down = sold_down_candidate
+
+        if sold_up:
             state.paired_inventory = round(state.paired_inventory - size, 4)
             state.free_down = round(state.free_down + size, 4)
             state.realized_pnl = round(state.realized_pnl + (up_quote - 0.5), 4)
             state.reward_pnl = round(state.reward_pnl + self.config.reward_per_trade_usd, 4)
-        if sold_down and state.paired_inventory > 0:
+        if sold_down:
             state.paired_inventory = round(state.paired_inventory - size, 4)
             state.free_up = round(state.free_up + size, 4)
             state.realized_pnl = round(state.realized_pnl + (down_quote - 0.5), 4)
