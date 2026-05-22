@@ -120,3 +120,17 @@ def test_pair_mm_blocks_repeat_sale_into_existing_free_up_inventory() -> None:
     state = PairMarketMakerState(paired_inventory=1.0, free_up=1.0)
     result = mm.evaluate(_market(), _book(0.2, 0.8), _book(0.5, 0.51), state)
     assert result["sold_down"] is False
+
+
+def test_pair_mm_requires_quote_to_be_near_visible_ask_for_fill() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=1.0)
+    result = mm.evaluate(_market(), _book(0.5, 0.6), _book(0.2, 0.8), state)
+    assert result["sold_up"] is False
+
+
+def test_pair_mm_allows_fill_when_quote_is_close_to_visible_ask() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=1.0)
+    result = mm.evaluate(_market(), _book(0.5, 0.52), _book(0.2, 0.8), state)
+    assert result["sold_up"] is True

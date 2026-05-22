@@ -20,6 +20,9 @@ class PairMarketMakerConfig:
     reward_per_trade_usd: float
 
 
+FILL_BUFFER = 0.02
+
+
 @dataclass
 class PairMarketMakerState:
     paired_inventory: float = 0.0
@@ -171,9 +174,14 @@ class PairMarketMaker:
                 "status": "pair_completed",
             }
 
+        up_fill_edge = None if up_ask is None else round(up_ask - up_quote, 4)
+        down_fill_edge = None if down_ask is None else round(down_ask - down_quote, 4)
+
         sold_up_candidate = (
             up_ask is not None
             and up_quote <= up_ask
+            and up_fill_edge is not None
+            and up_fill_edge <= FILL_BUFFER
             and up_skew < self.config.max_skew
             and state.paired_inventory > 0
             and state.free_down <= 0
@@ -181,6 +189,8 @@ class PairMarketMaker:
         sold_down_candidate = (
             down_ask is not None
             and down_quote <= down_ask
+            and down_fill_edge is not None
+            and down_fill_edge <= FILL_BUFFER
             and down_skew < self.config.max_skew
             and state.paired_inventory > 0
             and state.free_up <= 0
@@ -189,8 +199,8 @@ class PairMarketMaker:
         sold_up = False
         sold_down = False
         if sold_up_candidate and sold_down_candidate:
-            up_edge = round(up_ask - up_quote, 4) if up_ask is not None else -1.0
-            down_edge = round(down_ask - down_quote, 4) if down_ask is not None else -1.0
+            up_edge = up_fill_edge if up_fill_edge is not None else -1.0
+            down_edge = down_fill_edge if down_fill_edge is not None else -1.0
             if up_edge > down_edge:
                 sold_up = True
             elif down_edge > up_edge:
