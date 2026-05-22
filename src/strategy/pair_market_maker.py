@@ -171,8 +171,20 @@ class PairMarketMaker:
                 "status": "pair_completed",
             }
 
-        sold_up_candidate = up_ask is not None and up_quote <= up_ask and up_skew < self.config.max_skew and state.paired_inventory > 0
-        sold_down_candidate = down_ask is not None and down_quote <= down_ask and down_skew < self.config.max_skew and state.paired_inventory > 0
+        sold_up_candidate = (
+            up_ask is not None
+            and up_quote <= up_ask
+            and up_skew < self.config.max_skew
+            and state.paired_inventory > 0
+            and state.free_down <= 0
+        )
+        sold_down_candidate = (
+            down_ask is not None
+            and down_quote <= down_ask
+            and down_skew < self.config.max_skew
+            and state.paired_inventory > 0
+            and state.free_up <= 0
+        )
 
         sold_up = False
         sold_down = False
