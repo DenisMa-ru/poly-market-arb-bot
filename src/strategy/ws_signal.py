@@ -134,9 +134,13 @@ class WsSignalRunner:
                                 position is None
                                 and state.get("up_streak", 0) >= 3
                                 and state.get("down_streak", 0) == 0
+                                and best_bid is not None
                                 and best_ask is not None
                                 and spread is not None
                                 and spread <= 0.01
+                                and float(best_bid) >= 0.05
+                                and float(best_ask) <= 0.95
+                                and (1.0 - float(best_ask)) >= self.config.take_profit
                             ):
                                 state["position"] = {
                                     "entry_price": float(best_ask),
