@@ -191,7 +191,7 @@ class PairMarketMaker:
             and up_fill_edge is not None
             and up_fill_edge <= FILL_BUFFER
             and up_skew < self.config.max_skew
-            and state.paired_inventory > 0
+            and (state.paired_inventory > 0 or state.free_up > 0)
             and state.free_down <= 0
         )
         sold_down_candidate = (
@@ -200,7 +200,7 @@ class PairMarketMaker:
             and down_fill_edge is not None
             and down_fill_edge <= FILL_BUFFER
             and down_skew < self.config.max_skew
-            and state.paired_inventory > 0
+            and (state.paired_inventory > 0 or state.free_down > 0)
             and state.free_up <= 0
         )
 
@@ -230,14 +230,24 @@ class PairMarketMaker:
             sold_down = False
 
         if sold_up:
-            state.paired_inventory = round(state.paired_inventory - size, 4)
-            state.free_down = round(state.free_down + size, 4)
-            state.realized_pnl = round(state.realized_pnl + (up_quote - 0.5), 4)
+            unwind_size = min(size, state.free_up)
+            if unwind_size > 0:
+                state.free_up = round(state.free_up - unwind_size, 4)
+                state.realized_pnl = round(state.realized_pnl + up_quote * unwind_size, 4)
+            else:
+                state.paired_inventory = round(state.paired_inventory - size, 4)
+                state.free_down = round(state.free_down + size, 4)
+                state.realized_pnl = round(state.realized_pnl + (up_quote - 0.5), 4)
             state.reward_pnl = round(state.reward_pnl + self.config.reward_per_trade_usd, 4)
         if sold_down:
-            state.paired_inventory = round(state.paired_inventory - size, 4)
-            state.free_up = round(state.free_up + size, 4)
-            state.realized_pnl = round(state.realized_pnl + (down_quote - 0.5), 4)
+            unwind_size = min(size, state.free_down)
+            if unwind_size > 0:
+                state.free_down = round(state.free_down - unwind_size, 4)
+                state.realized_pnl = round(state.realized_pnl + down_quote * unwind_size, 4)
+            else:
+                state.paired_inventory = round(state.paired_inventory - size, 4)
+                state.free_up = round(state.free_up + size, 4)
+                state.realized_pnl = round(state.realized_pnl + (down_quote - 0.5), 4)
             state.reward_pnl = round(state.reward_pnl + self.config.reward_per_trade_usd, 4)
 
         repair_size = min(state.free_up, state.free_down)
