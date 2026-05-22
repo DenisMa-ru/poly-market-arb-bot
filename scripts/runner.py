@@ -194,6 +194,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     )
     pair_mm_states: dict[str, PairMarketMakerState] = getattr(scan_once, "_pair_mm_states", {})
     setattr(scan_once, "_pair_mm_states", pair_mm_states)
+    pair_mm_remaining_fill_budget = 1
     if filtered:
         logger.info(
             "discovered updown markets",
@@ -238,7 +239,15 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 mm_results.append(mm_result.__dict__)
             if settings.pair_mm_enabled and len(pair_mm_results) < settings.pair_mm_markets_limit:
                 pair_state = pair_mm_states.setdefault(market.slug, PairMarketMakerState())
-                pair_mm_result = pair_mm.evaluate(market, yes_book, no_book, pair_state)
+                pair_mm_result = pair_mm.evaluate(
+                    market,
+                    yes_book,
+                    no_book,
+                    pair_state,
+                    remaining_fill_budget=pair_mm_remaining_fill_budget,
+                )
+                if pair_mm_result.get("sold_up") or pair_mm_result.get("sold_down"):
+                    pair_mm_remaining_fill_budget = max(0, pair_mm_remaining_fill_budget - 1)
                 pair_mm_results.append(pair_mm_result)
             opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:

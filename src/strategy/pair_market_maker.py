@@ -44,7 +44,15 @@ class PairMarketMaker:
             return 0.0
         return round((paired_inventory * (up_bid + down_bid)) + (free_up * up_bid) + (free_down * down_bid), 4)
 
-    def evaluate(self, market: UpDownMarket, up_book: Orderbook, down_book: Orderbook, state: PairMarketMakerState) -> dict[str, object]:
+    def evaluate(
+        self,
+        market: UpDownMarket,
+        up_book: Orderbook,
+        down_book: Orderbook,
+        state: PairMarketMakerState,
+        *,
+        remaining_fill_budget: int | None = None,
+    ) -> dict[str, object]:
         up_bid = up_book.bids[0].price if up_book.bids else None
         up_ask = up_book.asks[0].price if up_book.asks else None
         down_bid = down_book.bids[0].price if down_book.bids else None
@@ -215,6 +223,11 @@ class PairMarketMaker:
         else:
             sold_up = sold_up_candidate
             sold_down = sold_down_candidate
+
+        fills_allowed = remaining_fill_budget is None or remaining_fill_budget > 0
+        if not fills_allowed:
+            sold_up = False
+            sold_down = False
 
         if sold_up:
             state.paired_inventory = round(state.paired_inventory - size, 4)

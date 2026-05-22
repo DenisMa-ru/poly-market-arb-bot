@@ -134,3 +134,12 @@ def test_pair_mm_allows_fill_when_quote_is_close_to_visible_ask() -> None:
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.5, 0.52), _book(0.2, 0.8), state)
     assert result["sold_up"] is True
+
+
+def test_pair_mm_respects_scan_level_fill_budget() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=1.0)
+    result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.2, 0.8), state, remaining_fill_budget=0)
+    assert result["sold_up"] is False
+    assert result["sold_down"] is False
+    assert result["paired_inventory_after"] == 1.0
