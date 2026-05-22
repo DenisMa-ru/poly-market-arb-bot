@@ -195,6 +195,12 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     pair_mm_states: dict[str, PairMarketMakerState] = getattr(scan_once, "_pair_mm_states", {})
     setattr(scan_once, "_pair_mm_states", pair_mm_states)
     pair_mm_remaining_fill_budget = 1
+    pair_mm_total_paired_inventory = round(sum(state.paired_inventory for state in pair_mm_states.values()), 4)
+    pair_mm_has_open_free_inventory = any(state.free_up > 0 or state.free_down > 0 for state in pair_mm_states.values())
+    pair_mm_replenish_blocked = (
+        pair_mm_has_open_free_inventory
+        or pair_mm_total_paired_inventory >= pair_mm.config.target_pairs
+    )
     if filtered:
         logger.info(
             "discovered updown markets",
@@ -239,7 +245,23 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 mm_results.append(mm_result.__dict__)
             if settings.pair_mm_enabled and len(pair_mm_results) < settings.pair_mm_markets_limit:
                 pair_state = pair_mm_states.setdefault(market.slug, PairMarketMakerState())
-                pair_mm_result = pair_mm.evaluate(
+                pair_mm_runner = pair_mm
+                if pair_mm_replenish_blocked:
+                    pair_mm_runner = PairMarketMaker(
+                        PairMarketMakerConfig(
+                            enabled=pair_mm.config.enabled,
+                            markets_limit=pair_mm.config.markets_limit,
+                            target_pairs=pair_mm.config.target_pairs,
+                            min_paired_inventory=0.0,
+                            replenish_batch_size=pair_mm.config.replenish_batch_size,
+                            max_free_inventory_per_side=pair_mm.config.max_free_inventory_per_side,
+                            quote_edge=pair_mm.config.quote_edge,
+                            skew_step=pair_mm.config.skew_step,
+                            max_skew=pair_mm.config.max_skew,
+                            reward_per_trade_usd=pair_mm.config.reward_per_trade_usd,
+                        )
+                    )
+                pair_mm_result = pair_mm_runner.evaluate(
                     market,
                     yes_book,
                     no_book,
@@ -248,6 +270,12 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 )
                 if pair_mm_result.get("sold_up") or pair_mm_result.get("sold_down"):
                     pair_mm_remaining_fill_budget = max(0, pair_mm_remaining_fill_budget - 1)
+                pair_mm_total_paired_inventory = round(sum(state.paired_inventory for state in pair_mm_states.values()), 4)
+                pair_mm_has_open_free_inventory = any(state.free_up > 0 or state.free_down > 0 for state in pair_mm_states.values())
+                pair_mm_replenish_blocked = (
+                    pair_mm_has_open_free_inventory
+                    or pair_mm_total_paired_inventory >= pair_mm.config.target_pairs
+                )
                 pair_mm_results.append(pair_mm_result)
             opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:
