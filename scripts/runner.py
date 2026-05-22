@@ -19,6 +19,7 @@ from src.execution.settlement import SettlementEngine
 from src.markets.updown_discovery import discover_updown_markets
 from src.markets.updown_parser import UpDownMarket
 from src.storage.db import Database
+from src.strategy.preorder import PreOrderConfig, PreOrderSimulator
 from src.utils.logger import get_logger, setup_logging
 
 logger = get_logger("scripts.runner")
@@ -63,6 +64,15 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     stats = ScanStats(discovered=len(filtered))
     logged_no_opportunity = 0
     snapshots: list[MarketSnapshot] = []
+    preorder_results: list[dict[str, object]] = []
+    preorder = PreOrderSimulator(
+        PreOrderConfig(
+            enabled=settings.preorder_enabled,
+            target_price_up=settings.preorder_target_price_up,
+            target_price_down=settings.preorder_target_price_down,
+            max_bundle_cost=settings.preorder_max_bundle_cost,
+        )
+    )
     if filtered:
         logger.info(
             "discovered updown markets",
@@ -98,6 +108,9 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                     down_asks=len(no_book.asks),
                 )
             )
+            if settings.preorder_enabled:
+                preorder_result = preorder.evaluate(market, yes_book, no_book)
+                preorder_results.append(preorder_result.__dict__)
             opportunity = _detect_updown_opportunity(analyzer, market, yes_book, no_book)
             if opportunity is None:
                 if logged_no_opportunity < 5:
@@ -189,6 +202,15 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 "markets": [snapshot.__dict__ for snapshot in best_snapshots[:5]],
             },
         )
+    if settings.preorder_enabled:
+        summary = {
+            "full_fill": sum(1 for row in preorder_results if row.get("status") == "full_fill"),
+            "full_fill_over_budget": sum(1 for row in preorder_results if row.get("status") == "full_fill_over_budget"),
+            "partial_fill": sum(1 for row in preorder_results if row.get("status") == "partial_fill"),
+            "no_fill": sum(1 for row in preorder_results if row.get("status") == "no_fill"),
+        }
+        db.insert_event("INFO", "preorder telemetry", {"summary": summary, "results": preorder_results[:20]})
+        logger.info("preorder summary", extra=summary)
     return stats
 
 

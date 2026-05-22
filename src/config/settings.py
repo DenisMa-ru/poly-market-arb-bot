@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     gas_estimate_usd: float = 0.01
     paper_trading: bool = True
     paper_starting_balance_usd: float = 1000.0
+    preorder_enabled: bool = False
+    preorder_target_price_up: float = 0.49
+    preorder_target_price_down: float = 0.49
+    preorder_max_bundle_cost: float = 0.98
     db_path: str = "data/poly_market_arb.db"
     log_level: str = "INFO"
 

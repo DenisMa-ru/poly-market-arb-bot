@@ -35,6 +35,8 @@ resolved_positions = _df(db.resolved_positions(limit=200))
 curve = _df(db.equity_curve(limit=2000))
 scan_events = _event_df(db.recent_scan_events(limit=100))
 near_arbs = _event_df(db.recent_near_arb_markets(limit=200))
+preorder_events = _event_df(db.recent_preorder_events(limit=100))
+preorder_results = _event_df(db.recent_preorder_results(limit=200))
 
 balance = db.latest_balance()
 open_exposure = db.open_exposure_usd()
@@ -44,6 +46,7 @@ st.title("Polymarket short up/down scanner")
 st.caption("Paper-mode dashboard for discovery, near-arb tracking, and execution telemetry.")
 
 latest_scan = scan_events.iloc[0] if not scan_events.empty else None
+latest_preorder = preorder_events.iloc[0] if not preorder_events.empty else None
 
 top1, top2, top3, top4, top5 = st.columns(5)
 top1.metric("Paper balance", f"${balance:,.2f}" if balance is not None else "—")
@@ -59,6 +62,15 @@ scan2.metric("Markets processed", int(latest_scan["processed"]) if latest_scan i
 scan3.metric("Opportunities", int(latest_scan["opportunities"]) if latest_scan is not None and "opportunities" in latest_scan else 0)
 scan4.metric("Executed", int(latest_scan["executed"]) if latest_scan is not None and "executed" in latest_scan else 0)
 scan5.metric("Errors", int(latest_scan["errors"]) if latest_scan is not None and "errors" in latest_scan else 0)
+
+if latest_preorder is not None and "summary" in latest_preorder:
+    summary = latest_preorder["summary"] if isinstance(latest_preorder["summary"], dict) else {}
+    st.subheader("Pre-order paper simulation")
+    p1, p2, p3, p4 = st.columns(4)
+    p1.metric("Full fills", int(summary.get("full_fill", 0)))
+    p2.metric("Over-budget fills", int(summary.get("full_fill_over_budget", 0)))
+    p3.metric("Partial fills", int(summary.get("partial_fill", 0)))
+    p4.metric("No fills", int(summary.get("no_fill", 0)))
 
 left, right = st.columns((1.2, 1.8))
 
@@ -92,6 +104,27 @@ with right:
         preferred = ["created_at", "discovered", "processed", "opportunities", "executed", "errors"]
         cols = [col for col in preferred if col in display.columns]
         st.dataframe(display[cols], use_container_width=True, hide_index=True)
+
+st.subheader("Pre-order results")
+if preorder_results.empty:
+    st.info("Pre-order simulation is not enabled or no telemetry yet.")
+else:
+    display = preorder_results.copy()
+    preferred = [
+        "created_at",
+        "slug",
+        "symbol",
+        "timeframe_minutes",
+        "target_price_up",
+        "target_price_down",
+        "filled_up",
+        "filled_down",
+        "bundle_cost",
+        "expected_pnl",
+        "status",
+    ]
+    cols = [col for col in preferred if col in display.columns]
+    st.dataframe(display[cols], use_container_width=True, hide_index=True)
 
 st.subheader("Equity curve")
 if curve.empty:
