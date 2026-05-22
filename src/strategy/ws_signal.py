@@ -37,17 +37,22 @@ class WsSignalRunner:
         best_bid: float | None,
         best_ask: float | None,
         spread: float | None,
-        up_streak: int,
         down_streak: int,
         take_profit: float,
+        trigger_side: str,
+        reference_ask: float | None,
     ) -> bool:
         if best_bid is None or best_ask is None or spread is None:
             return False
-        if down_streak < 3 or up_streak != 0:
+        if trigger_side != "BUY":
+            return False
+        if down_streak < 3:
             return False
         if spread > 0.01:
             return False
         if float(best_bid) < 0.05 or float(best_ask) > 0.95:
+            return False
+        if reference_ask is not None and float(best_ask) > float(reference_ask):
             return False
         midpoint = (float(best_bid) + float(best_ask)) / 2
         if midpoint > 0.5:
@@ -55,6 +60,10 @@ class WsSignalRunner:
         if (1.0 - float(best_ask)) < take_profit:
             return False
         return True
+
+    @staticmethod
+    def _is_cooldown_active(*, now_ts: float, cooldown_until_ts: float | None) -> bool:
+        return cooldown_until_ts is not None and now_ts < cooldown_until_ts
 
     @staticmethod
     def _resolve_exit_reason(*, pnl: float, hold_seconds: float, up_streak: int, config: WsSignalConfig) -> str | None:
@@ -133,6 +142,10 @@ class WsSignalRunner:
                                 "best_ask": best_ask,
                                 "up_streak": 0,
                                 "down_streak": 0,
+                                "armed_down_streak": 0,
+                                "armed_reference_ask": None,
+                                "cooldown_until_ts": None,
+                                "trade_count": 0,
                                 "position": None,
                             },
                         )
@@ -162,6 +175,10 @@ class WsSignalRunner:
                                 state["down_streak"] = int(state.get("down_streak", 0)) + 1
                                 state["up_streak"] = 0
 
+                            if side == "SELL" and int(state.get("down_streak", 0)) >= 3:
+                                state["armed_down_streak"] = int(state.get("down_streak", 0))
+                                state["armed_reference_ask"] = best_ask
+
                             spread = None
                             if best_bid is not None and best_ask is not None:
                                 spread = round(float(best_ask) - float(best_bid), 4)
@@ -169,24 +186,34 @@ class WsSignalRunner:
                             position = state.get("position")
                             if (
                                 position is None
+                                and int(state.get("trade_count", 0)) == 0
+                                and not self._is_cooldown_active(
+                                    now_ts=now_ts,
+                                    cooldown_until_ts=state.get("cooldown_until_ts"),
+                                )
                                 and self._should_open_mean_reversion(
                                     best_bid=float(best_bid) if best_bid is not None else None,
                                     best_ask=float(best_ask) if best_ask is not None else None,
                                     spread=spread,
-                                    up_streak=int(state.get("up_streak", 0)),
-                                    down_streak=int(state.get("down_streak", 0)),
+                                    down_streak=int(state.get("armed_down_streak", 0)),
                                     take_profit=self.config.take_profit,
+                                    trigger_side=side,
+                                    reference_ask=float(state.get("armed_reference_ask")) if state.get("armed_reference_ask") is not None else None,
                                 )
                             ):
                                 state["position"] = {
                                     "entry_price": float(best_ask),
                                     "entry_ts": now_ts,
-                                    "entry_reason": "down_streak_3_tight_spread_midpoint_reversion",
+                                    "entry_reason": "sell_streak_bounce_confirmation_reversion",
                                     "entry_best_bid": best_bid,
                                     "entry_best_ask": best_ask,
+                                    "armed_down_streak": state.get("armed_down_streak", 0),
+                                    "armed_reference_ask": state.get("armed_reference_ask"),
                                     "max_favorable_excursion": 0.0,
                                     "max_adverse_excursion": 0.0,
                                 }
+                                state["armed_down_streak"] = 0
+                                state["armed_reference_ask"] = None
                                 continue
 
                             if not isinstance(position, dict) or best_bid is None:
@@ -213,22 +240,29 @@ class WsSignalRunner:
                                     "exit_price": float(best_bid),
                                     "pnl": pnl,
                                     "hold_seconds": round(hold_seconds, 2),
-                                    "entry_reason": position["entry_reason"],
-                                    "entry_best_bid": position.get("entry_best_bid"),
-                                    "entry_best_ask": position.get("entry_best_ask"),
-                                    "exit_reason": exit_reason,
-                                    "exit_best_bid": best_bid,
-                                    "exit_best_ask": best_ask,
+                                     "entry_reason": position["entry_reason"],
+                                     "entry_best_bid": position.get("entry_best_bid"),
+                                     "entry_best_ask": position.get("entry_best_ask"),
+                                     "armed_down_streak": position.get("armed_down_streak"),
+                                     "armed_reference_ask": position.get("armed_reference_ask"),
+                                     "exit_reason": exit_reason,
+                                     "exit_best_bid": best_bid,
+                                     "exit_best_ask": best_ask,
                                     "up_streak_at_exit": state.get("up_streak", 0),
                                     "down_streak_at_exit": state.get("down_streak", 0),
                                     "max_favorable_excursion": round(float(position.get("max_favorable_excursion", 0.0)), 4),
                                     "max_adverse_excursion": round(float(position.get("max_adverse_excursion", 0.0)), 4),
                                     "status": "win" if pnl > 0 else "loss" if pnl < 0 else "flat",
-                                }
-                            )
+                                 }
+                             )
+                            state["trade_count"] = int(state.get("trade_count", 0)) + 1
+                            if pnl < 0:
+                                state["cooldown_until_ts"] = now_ts + float(self.config.max_hold_seconds)
                             state["position"] = None
                             state["up_streak"] = 0
                             state["down_streak"] = 0
+                            state["armed_down_streak"] = 0
+                            state["armed_reference_ask"] = None
 
         trades = len(closed_trades)
         wins = sum(1 for trade in closed_trades if float(trade["pnl"]) > 0)
