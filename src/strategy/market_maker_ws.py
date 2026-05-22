@@ -5,12 +5,18 @@ import json
 import time
 from dataclasses import dataclass
 
-import websockets
+from src.utils.logger import get_logger
+
+try:
+    import websockets
+except ImportError:  # pragma: no cover - depends on runtime environment
+    websockets = None
 
 from src.markets.updown_parser import UpDownMarket
 from src.strategy.market_maker import MarketMaker, MarketMakerFillResult, MarketMakerState
 
 WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+logger = get_logger("src.strategy.market_maker_ws")
 
 
 @dataclass(frozen=True)
@@ -39,6 +45,9 @@ class WsMarketMakerRunner:
         runtime_seconds: int,
         max_messages: int,
     ) -> tuple[dict[str, object], list[dict[str, object]]]:
+        if websockets is None:
+            raise RuntimeError("websockets package is not installed")
+
         token_to_market = {market.up_token_id: market for market in markets[: self.mm.config.markets_limit]}
         if not token_to_market:
             return {
@@ -59,6 +68,14 @@ class WsMarketMakerRunner:
         started = time.time()
 
         async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=20) as ws:
+            logger.info(
+                "mm ws connect",
+                extra={
+                    "markets": len(token_to_market),
+                    "runtime_seconds": runtime_seconds,
+                    "max_messages": max_messages,
+                },
+            )
             await ws.send(json.dumps({"assets_ids": list(token_to_market.keys()), "type": "market"}))
             while counts["messages"] < max_messages and (time.time() - started) < runtime_seconds:
                 raw = await asyncio.wait_for(ws.recv(), timeout=10)

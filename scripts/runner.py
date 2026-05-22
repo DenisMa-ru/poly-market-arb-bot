@@ -301,14 +301,27 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
         db.insert_event("INFO", "mm telemetry", {"summary": mm_summary, "results": mm_results[:20]})
         logger.info("mm summary", extra=mm_summary)
         if settings.mm_ws_enabled:
-            ws_runner = WsMarketMakerRunner(mm=mm, states=mm_states)
-            ws_summary, mm_ws_results = await ws_runner.run(
-                markets=filtered,
-                runtime_seconds=settings.mm_ws_runtime_seconds,
-                max_messages=settings.mm_ws_max_messages,
+            logger.info(
+                "mm ws start",
+                extra={
+                    "markets_available": len(filtered),
+                    "markets_limit": settings.mm_markets_limit,
+                    "runtime_seconds": settings.mm_ws_runtime_seconds,
+                    "max_messages": settings.mm_ws_max_messages,
+                },
             )
-            db.insert_event("INFO", "mm ws telemetry", {"summary": ws_summary, "results": mm_ws_results})
-            logger.info("mm ws summary", extra=ws_summary)
+            try:
+                ws_runner = WsMarketMakerRunner(mm=mm, states=mm_states)
+                ws_summary, mm_ws_results = await ws_runner.run(
+                    markets=filtered,
+                    runtime_seconds=settings.mm_ws_runtime_seconds,
+                    max_messages=settings.mm_ws_max_messages,
+                )
+                db.insert_event("INFO", "mm ws telemetry", {"summary": ws_summary, "results": mm_ws_results})
+                logger.info("mm ws summary", extra=ws_summary)
+            except Exception as exc:
+                logger.warning("mm ws failed", extra={"err": str(exc)})
+                db.insert_event("WARNING", "mm ws failed", {"err": str(exc)})
     return stats
 
 
