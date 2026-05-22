@@ -130,6 +130,71 @@ def _summarize_pair_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def _build_pair_mm_skipped_row(
+    *,
+    market: UpDownMarket,
+    yes_book,
+    no_book,
+    state: PairMarketMakerState,
+) -> dict[str, object]:
+    up_bid = yes_book.bids[0].price if yes_book.bids else None
+    up_ask = yes_book.asks[0].price if yes_book.asks else None
+    down_bid = no_book.bids[0].price if no_book.bids else None
+    down_ask = no_book.asks[0].price if no_book.asks else None
+    pair_bid_sum = None if up_bid is None or down_bid is None else round(up_bid + down_bid, 4)
+    pair_ask_sum = None if up_ask is None or down_ask is None else round(up_ask + down_ask, 4)
+    total_up = state.paired_inventory + state.free_up
+    total_down = state.paired_inventory + state.free_down
+    inventory_skew = round(total_up - total_down, 4)
+    mark_value = PairMarketMaker._mark_value(
+        paired_inventory=state.paired_inventory,
+        free_up=state.free_up,
+        free_down=state.free_down,
+        up_bid=up_bid,
+        down_bid=down_bid,
+    )
+    return {
+        "slug": market.slug,
+        "symbol": market.symbol,
+        "timeframe_minutes": market.timeframe_minutes,
+        "up_bid": up_bid,
+        "up_ask": up_ask,
+        "down_bid": down_bid,
+        "down_ask": down_ask,
+        "pair_bid_sum": pair_bid_sum,
+        "pair_ask_sum": pair_ask_sum,
+        "paired_inventory_before": state.paired_inventory,
+        "paired_inventory_after": state.paired_inventory,
+        "free_up_before": state.free_up,
+        "free_down_before": state.free_down,
+        "free_up_after": state.free_up,
+        "free_down_after": state.free_down,
+        "up_inventory_before": total_up,
+        "down_inventory_before": total_down,
+        "up_inventory_after": total_up,
+        "down_inventory_after": total_down,
+        "inventory_skew_before": inventory_skew,
+        "inventory_skew_after": inventory_skew,
+        "mark_value_before": mark_value,
+        "mark_value_after": mark_value,
+        "completed_pairs": state.completed_pairs,
+        "completed_pairs_delta": 0.0,
+        "split_notional": state.split_notional,
+        "split_notional_delta": 0.0,
+        "split_pairs": 0.0,
+        "realized_pnl": state.realized_pnl,
+        "realized_pnl_delta": 0.0,
+        "reward_pnl": state.reward_pnl,
+        "reward_pnl_delta": 0.0,
+        "skew_mark_pnl": 0.0,
+        "net_pnl": round(state.realized_pnl + state.reward_pnl, 4),
+        "net_pnl_delta": 0.0,
+        "sold_up": False,
+        "sold_down": False,
+        "status": "skipped",
+    }
+
+
 def build_client() -> PolymarketClient:
     settings = get_settings()
     settings.assert_polymarket_ready()
@@ -261,29 +326,21 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                             reward_per_trade_usd=pair_mm.config.reward_per_trade_usd,
                         )
                     )
-                pair_state_for_eval = pair_state
                 if pair_mm_has_open_free_inventory and pair_state.free_up <= 0 and pair_state.free_down <= 0:
-                    pair_state_for_eval = PairMarketMakerState(
-                        paired_inventory=0.0,
-                        free_up=pair_state.free_up,
-                        free_down=pair_state.free_down,
-                        realized_pnl=pair_state.realized_pnl,
-                        reward_pnl=pair_state.reward_pnl,
-                        completed_pairs=pair_state.completed_pairs,
-                        split_notional=pair_state.split_notional,
+                    pair_mm_result = _build_pair_mm_skipped_row(
+                        market=market,
+                        yes_book=yes_book,
+                        no_book=no_book,
+                        state=pair_state,
                     )
-                pair_mm_result = pair_mm_runner.evaluate(
-                    market,
-                    yes_book,
-                    no_book,
-                    pair_state_for_eval,
-                    remaining_fill_budget=pair_mm_remaining_fill_budget,
-                )
-                if pair_state_for_eval is not pair_state:
-                    pair_state.realized_pnl = pair_state_for_eval.realized_pnl
-                    pair_state.reward_pnl = pair_state_for_eval.reward_pnl
-                    pair_state.completed_pairs = pair_state_for_eval.completed_pairs
-                    pair_state.split_notional = pair_state_for_eval.split_notional
+                else:
+                    pair_mm_result = pair_mm_runner.evaluate(
+                        market,
+                        yes_book,
+                        no_book,
+                        pair_state,
+                        remaining_fill_budget=pair_mm_remaining_fill_budget,
+                    )
                 if pair_mm_result.get("sold_up") or pair_mm_result.get("sold_down"):
                     pair_mm_remaining_fill_budget = max(0, pair_mm_remaining_fill_budget - 1)
                 pair_mm_total_paired_inventory = round(sum(state.paired_inventory for state in pair_mm_states.values()), 4)
