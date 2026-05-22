@@ -122,6 +122,14 @@ class WsMarketMakerRunner:
                         quote = self.mm.build_quote(best_bid=best_bid, best_ask=best_ask, inventory=state.inventory)
                         if quote is None:
                             continue
+                        is_new_bid = state.active_bid != quote.bid
+                        is_new_ask = state.active_ask != quote.ask
+                        state.active_bid = quote.bid
+                        state.active_ask = quote.ask
+                        if is_new_bid:
+                            state.bid_filled = False
+                        if is_new_ask:
+                            state.ask_filled = False
                         results[market.slug] = {
                             "slug": market.slug,
                             "symbol": market.symbol,
@@ -167,9 +175,9 @@ class WsMarketMakerRunner:
                             crossed_ask = bool(ask_to_best_bid is not None and ask_to_best_bid <= 0)
                             near_touch_bid = bool(bid_to_best_ask is not None and 0 < bid_to_best_ask <= 0.01)
                             near_touch_ask = bool(ask_to_best_bid is not None and 0 < ask_to_best_bid <= 0.01)
-                            filled_bid = crossed_bid
+                            filled_bid = bool(crossed_bid and not state.bid_filled)
                             sell_size = min(self.mm.config.order_size, state.inventory)
-                            filled_ask = bool(crossed_ask and sell_size > 0)
+                            filled_ask = bool(crossed_ask and sell_size > 0 and not state.ask_filled)
                             spread_capture = 0.0
                             if filled_bid:
                                 fill_price = float(current["bid"])
@@ -177,6 +185,7 @@ class WsMarketMakerRunner:
                                 total_cost = (state.avg_entry_price * state.inventory) + (fill_price * self.mm.config.order_size)
                                 state.inventory = new_inventory
                                 state.avg_entry_price = total_cost / new_inventory if new_inventory > 0 else 0.0
+                                state.bid_filled = True
                             if filled_ask:
                                 spread_capture = round((float(current["ask"]) - state.avg_entry_price) * sell_size, 4)
                                 state.realized_pnl = round(state.realized_pnl + spread_capture, 4)
@@ -184,6 +193,7 @@ class WsMarketMakerRunner:
                                 if state.inventory <= 0:
                                     state.inventory = 0.0
                                     state.avg_entry_price = 0.0
+                                state.ask_filled = True
                             if bid_to_best_ask is not None:
                                 metrics["bid_to_best_ask"].append(bid_to_best_ask)
                             if ask_to_best_bid is not None:

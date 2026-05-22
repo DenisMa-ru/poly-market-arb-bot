@@ -53,6 +53,8 @@ class MarketMakerState:
     avg_entry_price: float = 0.0
     active_bid: float | None = None
     active_ask: float | None = None
+    bid_filled: bool = False
+    ask_filled: bool = False
     quote_updates: int = 0
     fill_count: int = 0
     realized_pnl: float = 0.0
