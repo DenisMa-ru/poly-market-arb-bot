@@ -12,6 +12,7 @@ class PreOrderConfig:
     target_price_up: float
     target_price_down: float
     max_bundle_cost: float
+    partial_exit_price: float
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,13 @@ class PreOrderResult:
     bundle_cost: float | None
     status: str
     expected_pnl: float | None
+    best_ask_up: float | None
+    best_ask_down: float | None
+    missing_leg: str | None
+    partial_exit_price: float | None
+    partial_exit_loss: float | None
+    distance_up: float | None
+    distance_down: float | None
 
 
 class PreOrderSimulator:
@@ -43,6 +51,10 @@ class PreOrderSimulator:
 
         cost_up = self.config.target_price_up if filled_up else None
         cost_down = self.config.target_price_down if filled_down else None
+        distance_up = None if up_ask is None else round(up_ask - self.config.target_price_up, 4)
+        distance_down = None if down_ask is None else round(down_ask - self.config.target_price_down, 4)
+        missing_leg: str | None = None
+        partial_exit_loss: float | None = None
 
         if filled_up and filled_down:
             bundle_cost = self.config.target_price_up + self.config.target_price_down
@@ -52,6 +64,9 @@ class PreOrderSimulator:
             bundle_cost = None
             expected_pnl = None
             status = "partial_fill"
+            missing_leg = "down" if filled_up else "up"
+            partial_fill_price = self.config.target_price_up if filled_up else self.config.target_price_down
+            partial_exit_loss = round(max(partial_fill_price - self.config.partial_exit_price, 0.0), 4)
         else:
             bundle_cost = None
             expected_pnl = None
@@ -70,4 +85,11 @@ class PreOrderSimulator:
             bundle_cost=bundle_cost,
             status=status,
             expected_pnl=expected_pnl,
+            best_ask_up=up_ask,
+            best_ask_down=down_ask,
+            missing_leg=missing_leg,
+            partial_exit_price=self.config.partial_exit_price,
+            partial_exit_loss=partial_exit_loss,
+            distance_up=distance_up,
+            distance_down=distance_down,
         )

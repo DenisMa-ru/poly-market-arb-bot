@@ -46,6 +46,27 @@ class MarketSnapshot:
     down_asks: int
 
 
+def _summarize_preorder_rows(rows: list[dict[str, object]]) -> dict[str, object]:
+    full_fill = sum(1 for row in rows if row.get("status") == "full_fill")
+    full_fill_over_budget = sum(1 for row in rows if row.get("status") == "full_fill_over_budget")
+    partial_fill = sum(1 for row in rows if row.get("status") == "partial_fill")
+    no_fill = sum(1 for row in rows if row.get("status") == "no_fill")
+    partial_losses = [float(row["partial_exit_loss"]) for row in rows if row.get("partial_exit_loss") is not None]
+    full_pnls = [float(row["expected_pnl"]) for row in rows if row.get("expected_pnl") is not None]
+    return {
+        "full_fill": full_fill,
+        "full_fill_over_budget": full_fill_over_budget,
+        "partial_fill": partial_fill,
+        "no_fill": no_fill,
+        "markets": len(rows),
+        "full_fill_rate": round(full_fill / len(rows), 4) if rows else 0.0,
+        "partial_fill_rate": round(partial_fill / len(rows), 4) if rows else 0.0,
+        "avg_full_fill_pnl": round(sum(full_pnls) / len(full_pnls), 4) if full_pnls else None,
+        "avg_partial_exit_loss": round(sum(partial_losses) / len(partial_losses), 4) if partial_losses else None,
+        "worst_partial_exit_loss": round(max(partial_losses), 4) if partial_losses else None,
+    }
+
+
 def build_client() -> PolymarketClient:
     settings = get_settings()
     settings.assert_polymarket_ready()
@@ -71,6 +92,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             target_price_up=settings.preorder_target_price_up,
             target_price_down=settings.preorder_target_price_down,
             max_bundle_cost=settings.preorder_max_bundle_cost,
+            partial_exit_price=settings.preorder_partial_exit_price,
         )
     )
     if filtered:
@@ -203,13 +225,34 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
             },
         )
     if settings.preorder_enabled:
-        summary = {
-            "full_fill": sum(1 for row in preorder_results if row.get("status") == "full_fill"),
-            "full_fill_over_budget": sum(1 for row in preorder_results if row.get("status") == "full_fill_over_budget"),
-            "partial_fill": sum(1 for row in preorder_results if row.get("status") == "partial_fill"),
-            "no_fill": sum(1 for row in preorder_results if row.get("status") == "no_fill"),
-        }
-        db.insert_event("INFO", "preorder telemetry", {"summary": summary, "results": preorder_results[:20]})
+        summary = _summarize_preorder_rows(preorder_results)
+        best_candidates = sorted(
+            preorder_results,
+            key=lambda row: (
+                row.get("status") not in {"full_fill", "full_fill_over_budget", "partial_fill"},
+                max(
+                    float(row["distance_up"]) if row.get("distance_up") is not None else 999.0,
+                    float(row["distance_down"]) if row.get("distance_down") is not None else 999.0,
+                ),
+            ),
+        )[:10]
+        recent_events = db.recent_preorder_events(limit=50)
+        rolling_rows: list[dict[str, object]] = []
+        for event in recent_events:
+            results = event.get("results")
+            if isinstance(results, list):
+                rolling_rows.extend(row for row in results if isinstance(row, dict))
+        rolling_summary = _summarize_preorder_rows(rolling_rows)
+        db.insert_event(
+            "INFO",
+            "preorder telemetry",
+            {
+                "summary": summary,
+                "rolling_summary": rolling_summary,
+                "best_candidates": best_candidates,
+                "results": preorder_results[:20],
+            },
+        )
         logger.info("preorder summary", extra=summary)
     return stats
 

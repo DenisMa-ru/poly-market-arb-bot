@@ -128,6 +128,22 @@ class Database:
                 out.append(row)
         return out[:limit]
 
+    def recent_preorder_candidates(self, limit: int = 100) -> list[dict[str, object]]:
+        events = self.recent_preorder_events(limit=limit)
+        out: list[dict[str, object]] = []
+        for event in events:
+            created_at = event.get("created_at")
+            candidates = event.get("best_candidates")
+            if not isinstance(candidates, list):
+                continue
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                row = dict(candidate)
+                row["created_at"] = created_at
+                out.append(row)
+        return out[:limit]
+
     def insert_trade(self, opportunity_id: int, mode: str, status: str = "pending", expected_pnl: float | None = None, notes: str | None = None) -> int:
         with self._lock:
             cur = self._conn.execute(

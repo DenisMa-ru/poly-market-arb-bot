@@ -37,6 +37,7 @@ scan_events = _event_df(db.recent_scan_events(limit=100))
 near_arbs = _event_df(db.recent_near_arb_markets(limit=200))
 preorder_events = _event_df(db.recent_preorder_events(limit=100))
 preorder_results = _event_df(db.recent_preorder_results(limit=200))
+preorder_candidates = _event_df(db.recent_preorder_candidates(limit=200))
 
 balance = db.latest_balance()
 open_exposure = db.open_exposure_usd()
@@ -65,12 +66,18 @@ scan5.metric("Errors", int(latest_scan["errors"]) if latest_scan is not None and
 
 if latest_preorder is not None and "summary" in latest_preorder:
     summary = latest_preorder["summary"] if isinstance(latest_preorder["summary"], dict) else {}
+    rolling = latest_preorder["rolling_summary"] if isinstance(latest_preorder.get("rolling_summary"), dict) else {}
     st.subheader("Pre-order paper simulation")
     p1, p2, p3, p4 = st.columns(4)
     p1.metric("Full fills", int(summary.get("full_fill", 0)))
     p2.metric("Over-budget fills", int(summary.get("full_fill_over_budget", 0)))
     p3.metric("Partial fills", int(summary.get("partial_fill", 0)))
     p4.metric("No fills", int(summary.get("no_fill", 0)))
+    p5, p6, p7, p8 = st.columns(4)
+    p5.metric("Full fill rate", f"{float(summary.get('full_fill_rate', 0.0)) * 100:.1f}%")
+    p6.metric("Rolling full fill rate", f"{float(rolling.get('full_fill_rate', 0.0)) * 100:.1f}%")
+    p7.metric("Avg partial exit loss", f"${float(summary['avg_partial_exit_loss']):.3f}" if summary.get("avg_partial_exit_loss") is not None else "—")
+    p8.metric("Rolling partial exit loss", f"${float(rolling['avg_partial_exit_loss']):.3f}" if rolling.get("avg_partial_exit_loss") is not None else "—")
 
 left, right = st.columns((1.2, 1.8))
 
@@ -119,9 +126,36 @@ else:
         "target_price_down",
         "filled_up",
         "filled_down",
+        "best_ask_up",
+        "best_ask_down",
+        "distance_up",
+        "distance_down",
+        "missing_leg",
         "bundle_cost",
         "expected_pnl",
+        "partial_exit_loss",
         "status",
+    ]
+    cols = [col for col in preferred if col in display.columns]
+    st.dataframe(display[cols], use_container_width=True, hide_index=True)
+
+st.subheader("Best pre-order candidates")
+if preorder_candidates.empty:
+    st.info("No pre-order candidate telemetry yet.")
+else:
+    display = preorder_candidates.copy()
+    preferred = [
+        "created_at",
+        "slug",
+        "symbol",
+        "timeframe_minutes",
+        "status",
+        "best_ask_up",
+        "best_ask_down",
+        "distance_up",
+        "distance_down",
+        "missing_leg",
+        "partial_exit_loss",
     ]
     cols = [col for col in preferred if col in display.columns]
     st.dataframe(display[cols], use_container_width=True, hide_index=True)

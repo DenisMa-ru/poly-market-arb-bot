@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     preorder_target_price_up: float = 0.49
     preorder_target_price_down: float = 0.49
     preorder_max_bundle_cost: float = 0.98
+    preorder_partial_exit_price: float = 0.47
     db_path: str = "data/poly_market_arb.db"
     log_level: str = "INFO"
 
