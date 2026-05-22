@@ -125,12 +125,27 @@ class WsSignalRunner:
                                 state["down_streak"] = int(state.get("down_streak", 0)) + 1
                                 state["up_streak"] = 0
 
+                            spread = None
+                            if best_bid is not None and best_ask is not None:
+                                spread = round(float(best_ask) - float(best_bid), 4)
+
                             position = state.get("position")
-                            if position is None and state.get("up_streak", 0) >= 3 and best_ask is not None:
+                            if (
+                                position is None
+                                and state.get("up_streak", 0) >= 3
+                                and state.get("down_streak", 0) == 0
+                                and best_ask is not None
+                                and spread is not None
+                                and spread <= 0.01
+                            ):
                                 state["position"] = {
                                     "entry_price": float(best_ask),
                                     "entry_ts": now_ts,
-                                    "entry_reason": "up_streak_3",
+                                    "entry_reason": "up_streak_3_tight_spread",
+                                    "entry_best_bid": best_bid,
+                                    "entry_best_ask": best_ask,
+                                    "max_favorable_excursion": 0.0,
+                                    "max_adverse_excursion": 0.0,
                                 }
                                 continue
 
@@ -139,11 +154,15 @@ class WsSignalRunner:
                             entry_price = float(position["entry_price"])
                             pnl = round(float(best_bid) - entry_price, 4)
                             hold_seconds = now_ts - float(position["entry_ts"])
+                            position["max_favorable_excursion"] = max(float(position.get("max_favorable_excursion", 0.0)), pnl)
+                            position["max_adverse_excursion"] = min(float(position.get("max_adverse_excursion", 0.0)), pnl)
                             exit_reason = None
                             if pnl >= self.config.take_profit:
                                 exit_reason = "take_profit"
                             elif pnl <= -self.config.stop_loss:
                                 exit_reason = "stop_loss"
+                            elif state.get("down_streak", 0) >= 2:
+                                exit_reason = "reversal"
                             elif hold_seconds >= self.config.max_hold_seconds:
                                 exit_reason = "max_hold"
                             if exit_reason is None:
@@ -158,7 +177,15 @@ class WsSignalRunner:
                                     "pnl": pnl,
                                     "hold_seconds": round(hold_seconds, 2),
                                     "entry_reason": position["entry_reason"],
+                                    "entry_best_bid": position.get("entry_best_bid"),
+                                    "entry_best_ask": position.get("entry_best_ask"),
                                     "exit_reason": exit_reason,
+                                    "exit_best_bid": best_bid,
+                                    "exit_best_ask": best_ask,
+                                    "up_streak_at_exit": state.get("up_streak", 0),
+                                    "down_streak_at_exit": state.get("down_streak", 0),
+                                    "max_favorable_excursion": round(float(position.get("max_favorable_excursion", 0.0)), 4),
+                                    "max_adverse_excursion": round(float(position.get("max_adverse_excursion", 0.0)), 4),
                                     "status": "win" if pnl > 0 else "loss" if pnl < 0 else "flat",
                                 }
                             )
