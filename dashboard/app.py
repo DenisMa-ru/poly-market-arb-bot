@@ -72,6 +72,8 @@ ws_signal_events = _event_df(db.recent_ws_signal_events(limit=100))
 ws_signal_results = _event_df(db.recent_ws_signal_results(limit=200))
 pair_mm_events = _event_df(db.recent_pair_mm_events(limit=100))
 pair_mm_results = _event_df(db.recent_pair_mm_results(limit=200))
+reward_market_events = _event_df(db.recent_reward_market_events(limit=100))
+reward_market_results = _event_df(db.recent_reward_market_results(limit=200))
 
 balance = db.latest_balance()
 open_exposure = db.open_exposure_usd()
@@ -86,6 +88,7 @@ latest_mm = mm_events.iloc[0] if not mm_events.empty else None
 latest_mm_ws = mm_ws_events.iloc[0] if not mm_ws_events.empty else None
 latest_ws_signal = ws_signal_events.iloc[0] if not ws_signal_events.empty else None
 latest_pair_mm = pair_mm_events.iloc[0] if not pair_mm_events.empty else None
+latest_reward_market = reward_market_events.iloc[0] if not reward_market_events.empty else None
 
 top1, top2, top3, top4, top5 = st.columns(5)
 top1.metric("Paper balance", f"${balance:,.2f}" if balance is not None else "—")
@@ -162,6 +165,54 @@ if any(
             s5.metric("WS messages", int(summary.get("messages", 0)))
             s6.metric("Avg PnL", f"${float(summary.get('avg_pnl', 0.0)):.3f}")
             s7.metric("Total PnL", f"${float(summary.get('total_pnl', 0.0)):.3f}")
+
+if latest_reward_market is not None and "summary" in latest_reward_market:
+    summary = latest_reward_market["summary"] if isinstance(latest_reward_market["summary"], dict) else {}
+    st.subheader("Reward-first market making")
+    r1, r2, r3, r4, r5 = st.columns(5)
+    r1.metric("Selected markets", int(summary.get("markets", 0)))
+    r2.metric("Reward-eligible", int(summary.get("reward_eligible_markets", 0)))
+    r3.metric("Fills", int(summary.get("fills", 0)))
+    r4.metric("Avg fill rate", f"{float(summary.get('avg_fill_rate', 0.0)) * 100:.1f}%")
+    r5.metric("Avg spread", f"{float(summary.get('avg_spread_bps', 0.0)):.1f} bps")
+    r6, r7, r8, r9 = st.columns(4)
+    r6.metric("Reward PnL", f"${float(summary.get('reward_pnl', 0.0)):.4f}")
+    r7.metric("Realized PnL", f"${float(summary.get('realized_pnl', 0.0)):.4f}")
+    r8.metric("Net inventory", f"{float(summary.get('net_inventory', 0.0)):.2f}")
+    r9.metric("Net PnL", f"${float(summary.get('net_pnl', 0.0)):.4f}")
+
+st.subheader("Reward market focus")
+reward_left, reward_right = st.columns((1.2, 1.8))
+
+with reward_left:
+    if latest_reward_market is None or "summary" not in latest_reward_market:
+        st.info("No reward market summary yet.")
+    else:
+        summary = latest_reward_market["summary"] if isinstance(latest_reward_market["summary"], dict) else {}
+        selected = summary.get("selected_markets") if isinstance(summary.get("selected_markets"), list) else []
+        st.dataframe(pd.DataFrame(selected), use_container_width=True, hide_index=True)
+
+with reward_right:
+    _show_table(
+        reward_market_results.head(20),
+        [
+            "created_at",
+            "slug",
+            "question",
+            "status",
+            "reward_rate_per_day",
+            "quoted_spread_bps",
+            "reward_eligible",
+            "filled_bid",
+            "filled_ask",
+            "fill_rate",
+            "net_inventory",
+            "reward_pnl_delta",
+            "realized_pnl_delta",
+            "net_pnl",
+        ],
+        empty_text="No reward market telemetry yet.",
+    )
 
 if latest_pair_mm is not None and "summary" in latest_pair_mm:
     summary = latest_pair_mm["summary"] if isinstance(latest_pair_mm["summary"], dict) else {}

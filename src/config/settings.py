@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     pair_mm_max_replenish_cost: float = 0.99
     pair_mm_reward_per_trade_usd: float = 0.0
     pair_mm_reward_bps_per_trade: float = 0.0
+    reward_mm_enabled: bool = False
+    reward_mm_markets_limit: int = 5
+    reward_mm_target_spread_bps: float = 100.0
+    reward_mm_order_size: float = 25.0
+    reward_mm_max_inventory_per_market: float = 100.0
+    reward_mm_inventory_bias_bps: float = 50.0
+    reward_mm_daily_loss_limit_usd: float = 50.0
+    reward_mm_category_tags: str = "sports,politics"
+    reward_mm_min_volume_24h: float = 0.0
     ws_signal_enabled: bool = False
     ws_signal_runtime_seconds: int = 5
     ws_signal_max_messages: int = 100

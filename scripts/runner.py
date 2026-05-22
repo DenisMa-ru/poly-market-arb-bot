@@ -17,10 +17,12 @@ from src.config.settings import get_settings
 from src.execution.executor import Executor
 from src.execution.settlement import SettlementEngine
 from src.markets.updown_discovery import discover_updown_markets
+from src.markets.reward_market_selector import fetch_reward_candidates
 from src.markets.updown_parser import UpDownMarket
 from src.storage.db import Database
 from src.strategy.pair_market_maker import PairMarketMaker, PairMarketMakerConfig, PairMarketMakerState
 from src.strategy.market_maker import MarketMaker, MarketMakerConfig, MarketMakerState
+from src.strategy.reward_market_maker import RewardMarketMaker, RewardMarketMakerConfig, RewardMarketMakerState
 from src.strategy.market_maker_ws import WsMarketMakerRunner
 from src.strategy.preorder import PreOrderConfig, PreOrderSimulator
 from src.strategy.ws_signal import WsSignalConfig, WsSignalRunner
@@ -143,6 +145,42 @@ def _summarize_pair_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def _summarize_reward_mm_rows(rows: list[dict[str, object]]) -> dict[str, object]:
+    fills = sum(1 for row in rows if row.get("filled_bid") or row.get("filled_ask"))
+    reward_eligible = sum(1 for row in rows if row.get("reward_eligible"))
+    realized_pnl = round(sum(float(row.get("realized_pnl_delta", 0.0)) for row in rows), 4)
+    reward_pnl = round(sum(float(row.get("reward_pnl_delta", 0.0)) for row in rows), 6)
+    mark_pnl = round(sum(float(row.get("mark_pnl", 0.0)) for row in rows), 4)
+    net_inventory = round(sum(float(row.get("net_inventory", 0.0)) for row in rows), 4)
+    avg_fill_rate = round(sum(float(row.get("fill_rate", 0.0)) for row in rows) / len(rows), 4) if rows else 0.0
+    avg_spread_bps = round(sum(float(row.get("quoted_spread_bps", 0.0)) for row in rows if row.get("quoted_spread_bps") is not None) / max(1, sum(1 for row in rows if row.get("quoted_spread_bps") is not None)), 2)
+    reward_markets = sorted(rows, key=lambda row: float(row.get("reward_rate_per_day") or 0.0), reverse=True)[:10]
+    return {
+        "markets": len(rows),
+        "fills": fills,
+        "reward_eligible_markets": reward_eligible,
+        "avg_fill_rate": avg_fill_rate,
+        "avg_spread_bps": avg_spread_bps,
+        "realized_pnl": realized_pnl,
+        "reward_pnl": reward_pnl,
+        "mark_pnl": mark_pnl,
+        "net_pnl": round(realized_pnl + reward_pnl + mark_pnl, 4),
+        "net_inventory": net_inventory,
+        "selected_markets": [
+            {
+                "slug": row.get("slug"),
+                "question": row.get("question"),
+                "reward_rate_per_day": row.get("reward_rate_per_day"),
+                "quoted_spread_bps": row.get("quoted_spread_bps"),
+                "fill_rate": row.get("fill_rate"),
+                "net_inventory": row.get("net_inventory"),
+                "status": row.get("status"),
+            }
+            for row in reward_markets
+        ],
+    }
+
+
 def _build_pair_mm_skipped_row(
     *,
     market: UpDownMarket,
@@ -258,6 +296,7 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     mm_results: list[dict[str, object]] = []
     mm_ws_results: list[dict[str, object]] = []
     pair_mm_results: list[dict[str, object]] = []
+    reward_mm_results: list[dict[str, object]] = []
     preorder = PreOrderSimulator(
         PreOrderConfig(
             enabled=settings.preorder_enabled,
@@ -301,6 +340,18 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
     )
     pair_mm_states: dict[str, PairMarketMakerState] = getattr(scan_once, "_pair_mm_states", {})
     setattr(scan_once, "_pair_mm_states", pair_mm_states)
+    reward_mm = RewardMarketMaker(
+        RewardMarketMakerConfig(
+            enabled=settings.reward_mm_enabled,
+            target_spread_bps=settings.reward_mm_target_spread_bps,
+            order_size=settings.reward_mm_order_size,
+            max_inventory_per_market=settings.reward_mm_max_inventory_per_market,
+            inventory_bias_bps=settings.reward_mm_inventory_bias_bps,
+            daily_loss_limit_usd=settings.reward_mm_daily_loss_limit_usd,
+        )
+    )
+    reward_mm_states: dict[str, RewardMarketMakerState] = getattr(scan_once, "_reward_mm_states", {})
+    setattr(scan_once, "_reward_mm_states", reward_mm_states)
     pair_mm_remaining_fill_budget = 1
     pair_mm_remaining_replenish_budget = 1
     pair_mm_total_paired_inventory = round(sum(state.paired_inventory for state in pair_mm_states.values()), 4)
@@ -317,6 +368,48 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
                 "slugs": [market.slug for market in filtered[:10]],
             },
         )
+    if settings.reward_mm_enabled:
+        reward_candidates = await fetch_reward_candidates(
+            client=client,
+            markets=await client.list_markets(active_only=True),
+            tag_slugs=[tag.strip() for tag in settings.reward_mm_category_tags.split(",") if tag.strip()],
+            limit=settings.reward_mm_markets_limit,
+            min_volume_24h=settings.reward_mm_min_volume_24h,
+        )
+        total_reward_net = round(sum(state.realized_pnl + state.reward_pnl for state in reward_mm_states.values()), 4)
+        reward_circuit_open = settings.reward_mm_daily_loss_limit_usd > 0 and total_reward_net <= -settings.reward_mm_daily_loss_limit_usd
+        for candidate in reward_candidates:
+            reward_state = reward_mm_states.setdefault(candidate.market.market_id, RewardMarketMakerState())
+            if reward_circuit_open:
+                reward_mm_results.append(
+                    {
+                        "slug": candidate.market.market_id,
+                        "question": candidate.question,
+                        "reward_rate_per_day": candidate.reward_rate_per_day,
+                        "quoted_spread_bps": candidate.spread_bps,
+                        "fill_rate": 0.0,
+                        "net_inventory": reward_state.inventory_yes - reward_state.inventory_no,
+                        "realized_pnl_delta": 0.0,
+                        "reward_pnl_delta": 0.0,
+                        "mark_pnl": 0.0,
+                        "net_pnl": reward_state.realized_pnl + reward_state.reward_pnl,
+                        "status": "circuit_breaker",
+                    }
+                )
+                continue
+            reward_mm_results.append(
+                reward_mm.evaluate(
+                    slug=candidate.market.market_id,
+                    question=candidate.question,
+                    best_bid=candidate.best_bid,
+                    best_ask=candidate.best_ask,
+                    reward_rate_per_day=candidate.reward_rate_per_day,
+                    rewards_max_spread=candidate.rewards_max_spread,
+                    rewards_min_size=candidate.rewards_min_size,
+                    volume_24hr=candidate.volume_24hr,
+                    state=reward_state,
+                )
+            )
     for market in filtered:
         try:
             yes_book, no_book = await asyncio.gather(
@@ -552,6 +645,10 @@ async def scan_once(client: PolymarketClient, db: Database, analyzer: ArbitrageA
         pair_mm_summary = _summarize_pair_mm_rows(pair_mm_results)
         db.insert_event("INFO", "pair mm telemetry", {"summary": pair_mm_summary, "results": pair_mm_results[:20]})
         logger.info("pair mm summary", extra=pair_mm_summary)
+    if settings.reward_mm_enabled:
+        reward_mm_summary = _summarize_reward_mm_rows(reward_mm_results)
+        db.insert_event("INFO", "reward market telemetry", {"summary": reward_mm_summary, "results": reward_mm_results[:20]})
+        logger.info("reward market summary", extra=reward_mm_summary)
     return stats
 
 

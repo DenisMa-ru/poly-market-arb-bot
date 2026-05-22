@@ -260,6 +260,35 @@ class Database:
                 out.append(row)
         return out[:limit]
 
+    def recent_reward_market_events(self, limit: int = 100) -> list[dict[str, object]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT created_at, level, message, context_json FROM bot_events WHERE message = 'reward market telemetry' ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        out: list[dict[str, object]] = []
+        for row in rows:
+            payload = self._parse_context_json(row["context_json"])
+            payload.update({"created_at": row["created_at"], "level": row["level"], "message": row["message"]})
+            out.append(payload)
+        return out
+
+    def recent_reward_market_results(self, limit: int = 100) -> list[dict[str, object]]:
+        events = self.recent_reward_market_events(limit=limit)
+        out: list[dict[str, object]] = []
+        for event in events:
+            created_at = event.get("created_at")
+            results = event.get("results")
+            if not isinstance(results, list):
+                continue
+            for result in results:
+                if not isinstance(result, dict):
+                    continue
+                row = dict(result)
+                row["created_at"] = created_at
+                out.append(row)
+        return out[:limit]
+
     def insert_trade(self, opportunity_id: int, mode: str, status: str = "pending", expected_pnl: float | None = None, notes: str | None = None) -> int:
         with self._lock:
             cur = self._conn.execute(
