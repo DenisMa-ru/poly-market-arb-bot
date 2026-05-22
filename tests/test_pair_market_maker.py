@@ -24,7 +24,7 @@ def _book(bid: float, ask: float) -> Orderbook:
 
 
 def test_pair_mm_sells_inventory_and_collects_reward() -> None:
-    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.02))
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.02))
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.5, 0.51), state)
     assert result["sold_up"] or result["sold_down"]
@@ -35,7 +35,7 @@ def test_pair_mm_sells_inventory_and_collects_reward() -> None:
 
 
 def test_pair_mm_completes_pair_when_pair_bid_above_par() -> None:
-    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.51, 0.52), _book(0.51, 0.52), state)
     assert result["pair_bid_sum"] == 1.02
@@ -44,7 +44,7 @@ def test_pair_mm_completes_pair_when_pair_bid_above_par() -> None:
 
 
 def test_pair_mm_tracks_skew_mark_pnl_after_one_sided_sale() -> None:
-    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, quote_edge=0.01, skew_step=0.0, max_skew=3, reward_per_trade_usd=0.0))
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.0, max_skew=3, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.45, 0.6), state)
     assert int(bool(result["sold_up"])) + int(bool(result["sold_down"])) == 1
@@ -53,7 +53,7 @@ def test_pair_mm_tracks_skew_mark_pnl_after_one_sided_sale() -> None:
 
 
 def test_pair_mm_replenish_is_not_free() -> None:
-    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.45, 0.6), state)
     assert result["split_pairs"] == 1.0
@@ -64,7 +64,29 @@ def test_pair_mm_replenish_is_not_free() -> None:
 
 
 def test_pair_mm_allows_only_one_fill_side_per_scan() -> None:
-    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=1, min_paired_inventory=1, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
     state = PairMarketMakerState(paired_inventory=1.0)
     result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.5, 0.51), state)
     assert int(bool(result["sold_up"])) + int(bool(result["sold_down"])) == 1
+
+
+def test_pair_mm_does_not_replenish_above_min_threshold() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=2, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=5.0)
+    result = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.5, 0.51), state)
+    assert result["split_pairs"] == 0.0
+
+
+def test_pair_mm_replenishes_in_batches_only_below_min_threshold() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=2, replenish_batch_size=1, max_free_inventory_per_side=10, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=2.0)
+    first = mm.evaluate(_market(), _book(0.5, 0.51), _book(0.5, 0.51), state)
+    assert first["split_pairs"] == 1.0
+    assert first["paired_inventory_after"] == 2.0
+
+
+def test_pair_mm_skips_replenish_when_free_inventory_is_too_large() -> None:
+    mm = PairMarketMaker(PairMarketMakerConfig(enabled=True, markets_limit=5, target_pairs=5, min_paired_inventory=2, replenish_batch_size=1, max_free_inventory_per_side=1, quote_edge=0.01, skew_step=0.01, max_skew=3, reward_per_trade_usd=0.0))
+    state = PairMarketMakerState(paired_inventory=1.0, free_down=1.0)
+    result = mm.evaluate(_market(), _book(0.45, 0.6), _book(0.5, 0.51), state)
+    assert result["split_pairs"] == 0.0

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     pair_mm_enabled: bool = False
     pair_mm_markets_limit: int = 5
     pair_mm_target_pairs: float = 5.0
+    pair_mm_min_paired_inventory: float = 2.0
+    pair_mm_replenish_batch_size: float = 1.0
+    pair_mm_max_free_inventory_per_side: float = 2.0
     pair_mm_quote_edge: float = 0.01
     pair_mm_skew_step: float = 0.01
     pair_mm_max_skew: float = 3.0

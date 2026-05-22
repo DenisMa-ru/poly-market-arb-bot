@@ -11,6 +11,9 @@ class PairMarketMakerConfig:
     enabled: bool
     markets_limit: int
     target_pairs: float
+    min_paired_inventory: float
+    replenish_batch_size: float
+    max_free_inventory_per_side: float
     quote_edge: float
     skew_step: float
     max_skew: float
@@ -209,8 +212,12 @@ class PairMarketMaker:
             state.paired_inventory = round(state.paired_inventory + repair_size, 4)
 
         split_pairs = 0.0
-        if state.paired_inventory < self.config.target_pairs:
-            split_pairs = round(self.config.target_pairs - state.paired_inventory, 4)
+        can_replenish = max(state.free_up, state.free_down) < self.config.max_free_inventory_per_side if self.config.max_free_inventory_per_side > 0 else True
+        needs_replenish = state.paired_inventory < self.config.min_paired_inventory
+        if can_replenish and needs_replenish:
+            replenish_target = min(self.config.target_pairs, state.paired_inventory + self.config.replenish_batch_size)
+            split_pairs = round(replenish_target - state.paired_inventory, 4)
+        if split_pairs > 0:
             state.paired_inventory = round(state.paired_inventory + split_pairs, 4)
             state.split_notional = round(state.split_notional + split_pairs, 4)
             state.realized_pnl = round(state.realized_pnl - split_pairs, 4)
